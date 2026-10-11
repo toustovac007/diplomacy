@@ -31,6 +31,13 @@ class OrderSerializer(serializers.ModelSerializer):
         write_only=True
     )
 
+    saved_unit_id = serializers.IntegerField(
+        source="unit.id",
+        read_only=True,
+    )
+
+
+
     # MOVE
     target = serializers.CharField(
         write_only=True,
@@ -128,6 +135,7 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "unit_id",
+            "saved_unit_id",
             "unit_type",
             "order_type",
 

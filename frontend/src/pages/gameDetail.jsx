@@ -5,6 +5,13 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 
+import OrderPanel from "../components/game/OrderPanel";
+
+import {
+    getOrders,
+} from "../services/orders";
+
+
 function GameDetail() {
     const { gameId } = useParams();
     const { user } = useAuth();
@@ -14,7 +21,9 @@ function GameDetail() {
 
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
-
+    const [orders, setOrders] = useState([]);
+    const [ordersLoading, setOrdersLoading] =
+        useState(false);
 
     const loadGame = async () => {
         try {
@@ -37,9 +46,57 @@ function GameDetail() {
     };
 
 
-    useEffect(() => {
-        loadGame();
-    }, [gameId]);
+    const loadOrders = async () => {
+        try {
+            setOrdersLoading(true);
+
+            const data = await getOrders(
+                gameId
+            );
+
+            console.log("ORDERS Z API:", data);
+
+
+            setOrders(data);
+
+        } catch (error) {
+            console.error(
+                "Nepodařilo se načíst rozkazy:",
+                error
+            );
+
+        } finally {
+            setOrdersLoading(false);
+        }
+    };
+
+
+        const handleOrderSaved = async () => {
+            await loadOrders();
+        };
+
+
+
+
+        useEffect(() => {
+            loadGame();
+        }, [gameId]);
+
+        useEffect(() => {
+            if (
+                game?.status === "active" &&
+                game?.current_phase?.phase_type === "movement"
+            ) {
+                loadOrders();
+            }
+        }, [
+            gameId,
+            game?.status,
+            game?.current_phase?.id,
+        ]);
+
+
+
 
 
     const handleStartGame = async () => {
@@ -89,6 +146,25 @@ function GameDetail() {
 
     const isCreator =
         game.creator === user?.username;
+
+    const currentPlayer = game.players.find(
+    (player) => player.username === user?.username
+    );
+
+    const myUnits = game.units?.filter(
+        (unit) => unit.owner_username === user?.username
+    ) ?? [];
+
+
+    console.log(
+        "MOJE JEDNOTKY:",
+        myUnits.map((unit) => ({
+            id: unit.id,
+            province: unit.province_name,
+        }))
+    );
+
+
 
 
     return (
@@ -199,6 +275,25 @@ function GameDetail() {
 
                     <h2>Hra probíhá</h2>
 
+
+                                    {currentPlayer && (
+                    <div>
+                        <h3>Tvůj stát</h3>
+
+                        <p>
+                            <strong>
+                                {currentPlayer.country_name}
+                            </strong>
+                            {" "}
+                            ({currentPlayer.country})
+                        </p>
+                    </div>
+                )}
+
+
+
+
+
                     {game.current_phase ? (
                         <div>
                             <h3>
@@ -220,24 +315,99 @@ function GameDetail() {
                                 </strong>
                             </p>
 
-                            <h3>Jednotky</h3>
+                            <h3>Moje jednotky</h3>
 
-                            <ul>
-                                {game.units.map((unit) => (
-                                    <li key={unit.id}>
-                                        <strong>
-                                            {unit.unit_type === "army" ? "A" : "F"}
-                                        </strong>
-                                        {" "}
-                                        {unit.province_name}
-                                        {unit.coast && ` (${unit.coast.toUpperCase()})`}
-                                        {" — "}
-                                        {unit.country_name}
-                                        {" — "}
-                                        {unit.owner_username}
-                                    </li>
-                                ))}
-                            </ul>
+                            {myUnits.length > 0 ? (
+                                <ul>
+                                    {myUnits.map((unit) => (
+                                        <li key={unit.id}>
+                                            <strong>
+                                                {unit.unit_type === "army"
+                                                    ? "A"
+                                                    : "F"}
+                                            </strong>
+                                            {" "}
+                                            {unit.province_name}
+
+                                            {unit.coast &&
+                                                ` (${unit.coast.toUpperCase()})`
+                                            }
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p>Nemáš žádné jednotky.</p>
+                            )}
+
+
+
+
+                            {game.current_phase?.phase_type === "movement" && (
+                                <>
+                                    <h3>Rozkazy</h3>
+
+                                    {ordersLoading ? (
+                                        <p>Načítání rozkazů...</p>
+                                    ) : (
+                                        myUnits.map((unit) => {
+                                            const existingOrder = orders.find(
+                                                (order) =>
+                                                    order.saved_unit_id === unit.id
+                                            );
+
+                                            console.log(
+                                                "PÁROVÁNÍ:",
+                                                {
+                                                    unitId: unit.id,
+                                                    province: unit.province_name,
+                                                    orderIds: orders.map(
+                                                        (order) => order.saved_unit_id
+                                                    ),
+                                                    foundOrder: existingOrder,
+                                                }
+                                            );
+
+                                            return (
+                                                <OrderPanel
+                                                    key={unit.id}
+                                                    gameId={gameId}
+                                                    unit={unit}
+                                                    existingOrder={existingOrder}
+                                                    onOrderSaved={handleOrderSaved}
+                                                />
+                                            );
+                                        })
+                                    )}
+                                </>
+                            )}
+
+                                <h3>Všechny jednotky</h3>
+
+                                <ul>
+                                    {game.units.map((unit) => (
+                                        <li key={unit.id}>
+                                            <strong>
+                                                {unit.unit_type === "army"
+                                                    ? "A"
+                                                    : "F"}
+                                            </strong>
+                                            {" "}
+                                            {unit.province_name}
+
+                                            {unit.coast &&
+                                                ` (${unit.coast.toUpperCase()})`
+                                            }
+
+                                            {" — "}
+                                            {unit.country_name}
+
+                                            {" — "}
+                                            {unit.owner_username}
+                                        </li>
+                                    ))}
+                                </ul>
+
+
 
                             <p>
                                 Deadline:{" "}
