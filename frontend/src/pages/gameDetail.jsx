@@ -9,10 +9,27 @@ import OrderPanel from "../components/game/OrderPanel";
 
 import {
     getOrders,
+    submitOrder,
 } from "../services/orders";
 
+import GameMap from "../components/game/GameMap";
 
 function GameDetail() {
+    const [draftOrderType, setDraftOrderType] =
+        useState(null);
+
+    const [supportedUnit, setSupportedUnit] =
+        useState(null);
+
+    const [mapOrderMessage, setMapOrderMessage] =
+        useState("");
+
+    const [mapOrderError, setMapOrderError] =
+        useState("");
+    const [selectedUnit, setSelectedUnit] =
+        useState(null);
+    const [mapTarget, setMapTarget] =
+        useState("");
     const { gameId } = useParams();
     const { user } = useAuth();
 
@@ -95,6 +112,226 @@ function GameDetail() {
             game?.current_phase?.id,
         ]);
 
+
+
+    const saveMapOrder = async (data) => {
+        setMapOrderError("");
+        setMapOrderMessage("");
+
+        try {
+            await submitOrder(
+                gameId,
+                data
+            );
+
+            await loadOrders();
+
+            setMapOrderMessage(
+                "Rozkaz byl uložen."
+            );
+
+            setDraftOrderType(null);
+            setMapTarget("");
+            setSupportedUnit(null);
+
+            // Po úspěšném uložení výběr zavřeme.
+            // Bílý okraj a šipka už ukážou uložený stav.
+            setSelectedUnit(null);
+
+        } catch (error) {
+            console.error(error);
+
+            const backendData =
+                error.response?.data;
+
+            if (backendData) {
+                setMapOrderError(
+                    typeof backendData === "string"
+                        ? backendData
+                        : JSON.stringify(backendData)
+                );
+            } else {
+                setMapOrderError(
+                    "Rozkaz se nepodařilo uložit."
+                );
+            }
+        }
+    };
+
+
+
+    const handleMapProvinceClick = async (
+        provinceCode,
+        clickedUnit
+    ) => {
+        setMapOrderError("");
+
+        if (!selectedUnit) {
+            return;
+        }
+
+        // =========================
+        // MOVE
+        // =========================
+
+        if (draftOrderType === "move") {
+            setMapTarget(
+                provinceCode
+            );
+
+            await saveMapOrder({
+                unit_id: selectedUnit.id,
+                order_type: "move",
+                target: provinceCode,
+            });
+
+            return;
+        }
+
+        // =========================
+        // SUPPORT - výběr jednotky
+        // =========================
+
+        if (
+            draftOrderType ===
+            "support-unit"
+        ) {
+            if (!clickedUnit) {
+                setMapOrderError(
+                    "Klikni na jednotku, kterou chceš podporovat."
+                );
+
+                return;
+            }
+
+            if (
+                clickedUnit.id ===
+                selectedUnit.id
+            ) {
+                setMapOrderError(
+                    "Jednotka nemůže podporovat sama sebe."
+                );
+
+                return;
+            }
+
+            setSupportedUnit(
+                clickedUnit
+            );
+
+            setDraftOrderType(
+                "support-mode"
+            );
+
+            return;
+        }
+
+        // =========================
+        // SUPPORT MOVE - cíl
+        // =========================
+
+        if (
+            draftOrderType ===
+            "support-target"
+        ) {
+            if (!supportedUnit) {
+                return;
+            }
+
+            setMapTarget(
+                provinceCode
+            );
+
+            await saveMapOrder({
+                unit_id: selectedUnit.id,
+                order_type: "support",
+                supported_unit_id:
+                    supportedUnit.id,
+                support_target:
+                    provinceCode,
+            });
+        }
+    };
+
+
+
+    const handleMapOrderType = async (orderType) => {
+        if (!selectedUnit) {
+            return;
+        }
+
+        setMapOrderError("");
+        setMapOrderMessage("");
+        setMapTarget("");
+        setSupportedUnit(null);
+
+        if (orderType === "hold") {
+            await saveMapOrder({
+                unit_id: selectedUnit.id,
+                order_type: "hold",
+            });
+
+            return;
+        }
+
+        if (orderType === "move") {
+            setDraftOrderType("move");
+            return;
+        }
+
+        if (orderType === "support") {
+            setDraftOrderType(
+                "support-unit"
+            );
+        }
+    };
+
+
+    {draftOrderType === "support-mode" &&
+        supportedUnit && (
+            <div>
+                <p>
+                    Podporovaná jednotka:{" "}
+                    <strong>
+                        {supportedUnit.unit_type === "army"
+                            ? "A"
+                            : "F"}{" "}
+                        {supportedUnit.province_name}
+                    </strong>
+                </p>
+
+                <button
+                    onClick={() =>
+                        saveMapOrder({
+                            unit_id:
+                                selectedUnit.id,
+
+                            order_type:
+                                "support",
+
+                            supported_unit_id:
+                                supportedUnit.id,
+                        })
+                    }
+                >
+                    Podpořit HOLD
+                </button>
+
+                {" "}
+
+                <button
+                    onClick={() => {
+                        setDraftOrderType(
+                            "support-target"
+                        );
+
+                        setMapTarget("");
+                    }}
+                >
+                    Podpořit MOVE
+                </button>
+            </div>
+        )}
 
 
 
@@ -337,6 +574,87 @@ function GameDetail() {
                                 </ul>
                             ) : (
                                 <p>Nemáš žádné jednotky.</p>
+                            )}
+
+
+                            <GameMap
+                                units={game.units}
+                                myUnits={myUnits}
+                                orders={orders}
+
+                                selectedUnit={selectedUnit}
+                                selectedTarget={mapTarget}
+                                draftOrderType={draftOrderType}
+
+                                onSelectUnit={(unit) => {
+                                    setSelectedUnit(unit);
+
+                                    setMapTarget("");
+                                    setDraftOrderType(null);
+                                    setSupportedUnit(null);
+
+                                    setMapOrderError("");
+                                    setMapOrderMessage("");
+                                }}
+
+                                onOrderTypeSelect={
+                                    handleMapOrderType
+                                }
+
+                                onProvinceClick={
+                                    handleMapProvinceClick
+                                }
+                            />
+
+
+                            {draftOrderType === "move" && (
+                                <p>
+                                    Klikni na cílovou provincii.
+                                </p>
+                            )}
+
+                            {draftOrderType === "support-unit" && (
+                                <p>
+                                    Klikni na jednotku, kterou chceš podporovat.
+                                </p>
+                            )}
+
+                            {draftOrderType === "support-target" && (
+                                <p>
+                                    Klikni na cílovou provincii podporovaného pohybu.
+                                </p>
+                            )}
+
+                            {mapOrderError && (
+                                <p>
+                                    {mapOrderError}
+                                </p>
+                            )}
+
+                            {mapOrderMessage && (
+                                <p>
+                                    {mapOrderMessage}
+                                </p>
+                            )}
+
+
+                            {selectedUnit && (
+                                <p>
+                                    Vybraná jednotka:{" "}
+                                    <strong>
+                                        {selectedUnit.unit_type === "army"
+                                            ? "A"
+                                            : "F"}{" "}
+                                        {selectedUnit.province_name}
+                                    </strong>
+                                </p>
+                            )}
+
+                            {mapTarget && (
+                                <p>
+                                    Vybraný cíl:{" "}
+                                    <strong>{mapTarget}</strong>
+                                </p>
                             )}
 
 

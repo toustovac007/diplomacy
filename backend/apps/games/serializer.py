@@ -84,6 +84,11 @@ class UnitSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    province_code = serializers.CharField(
+        source="province.code",
+        read_only=True,
+    )
+
     coast = serializers.CharField(
         source="coast.code",
         read_only=True,
@@ -106,6 +111,7 @@ class UnitSerializer(serializers.ModelSerializer):
             "unit_type_name",
             "province",
             "province_name",
+            "province_code",
             "coast",
         )
 
