@@ -15,19 +15,6 @@ const PROVINCE_CODES = [
 
 const PROVINCE_CODE_SET = new Set(PROVINCE_CODES);
 
-/*
- * The source jDip SVG uses a few historical/internal IDs that differ from
- * the province codes used by our backend.
- *
- * Backend -> SVG:
- * MAO -> mid
- * NAO -> nat
- * NWG -> nrg
- * TYS -> tyn
- *
- * We keep both spellings where possible so this component also works with
- * slightly different versions of the SVG.
- */
 const SVG_BASE_IDS = {
     MAO: ["mao", "mid"],
     NAO: ["nao", "nat"],
@@ -38,13 +25,10 @@ const SVG_BASE_IDS = {
 const SVG_ID_TO_GAME_CODE = {
     mid: "MAO",
     mao: "MAO",
-
     nat: "NAO",
     nao: "NAO",
-
     nrg: "NWG",
     nwg: "NWG",
-
     tyn: "TYS",
     tys: "TYS",
 };
@@ -58,6 +42,10 @@ const COUNTRY_COLORS = {
     RUS: "#757d91",
     TUR: "#b9a61c",
 };
+
+function createSvgElement(name) {
+    return document.createElementNS(SVG_NS, name);
+}
 
 function getSvgBaseIds(gameCode) {
     if (!gameCode) {
@@ -80,13 +68,10 @@ function normalizeSvgProvinceId(rawId) {
         .toLowerCase()
         .replace(/^_/, "");
 
-    // First resolve exact aliases used by the SVG.
     if (SVG_ID_TO_GAME_CODE[normalized]) {
         return SVG_ID_TO_GAME_CODE[normalized];
     }
 
-    // Coast-specific mouse zones such as spa-nc, spa-sc, stp-nc,
-    // stp-sc, bul-ec and bul-sc still belong to one game province.
     const baseId = normalized.split("-")[0];
 
     if (SVG_ID_TO_GAME_CODE[baseId]) {
@@ -116,13 +101,126 @@ function getVisibleProvinceElement(svg, gameCode) {
     return null;
 }
 
+function shortenLine(from, to, startOffset = 28, endOffset = 30) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+
+    if (!length || length <= startOffset + endOffset) {
+        return {
+            x1: from.x,
+            y1: from.y,
+            x2: to.x,
+            y2: to.y,
+        };
+    }
+
+    const ux = dx / length;
+    const uy = dy / length;
+
+    return {
+        x1: from.x + ux * startOffset,
+        y1: from.y + uy * startOffset,
+        x2: to.x - ux * endOffset,
+        y2: to.y - uy * endOffset,
+    };
+}
+
+function addArrowMarker(defs, id, fill) {
+    const marker = createSvgElement("marker");
+
+    marker.setAttribute("id", id);
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "8");
+    marker.setAttribute("markerHeight", "8");
+    marker.setAttribute("orient", "auto-start-reverse");
+
+    const path = createSvgElement("path");
+
+    path.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+    path.setAttribute("fill", fill);
+
+    marker.appendChild(path);
+    defs.appendChild(marker);
+}
+
+function drawArrow(
+    layer,
+    from,
+    to,
+    {
+        dash = "",
+        markerId,
+        innerStroke = "#111827",
+        outerStroke = "#ffffff",
+    }
+) {
+    const line = shortenLine(from, to);
+
+    const outer = createSvgElement("line");
+
+    outer.setAttribute("x1", String(line.x1));
+    outer.setAttribute("y1", String(line.y1));
+    outer.setAttribute("x2", String(line.x2));
+    outer.setAttribute("y2", String(line.y2));
+    outer.setAttribute("stroke", outerStroke);
+    outer.setAttribute("stroke-width", "8");
+    outer.setAttribute("stroke-linecap", "round");
+    outer.setAttribute("opacity", "0.9");
+
+    if (dash) {
+        outer.setAttribute("stroke-dasharray", dash);
+    }
+
+    const inner = createSvgElement("line");
+
+    inner.setAttribute("x1", String(line.x1));
+    inner.setAttribute("y1", String(line.y1));
+    inner.setAttribute("x2", String(line.x2));
+    inner.setAttribute("y2", String(line.y2));
+    inner.setAttribute("stroke", innerStroke);
+    inner.setAttribute("stroke-width", "4");
+    inner.setAttribute("stroke-linecap", "round");
+    inner.setAttribute(
+        "marker-end",
+        `url(#${markerId})`
+    );
+
+    if (dash) {
+        inner.setAttribute("stroke-dasharray", dash);
+    }
+
+    layer.appendChild(outer);
+    layer.appendChild(inner);
+}
+
+function drawHold(layer, position) {
+    const ring = createSvgElement("circle");
+
+    ring.setAttribute("cx", String(position.x));
+    ring.setAttribute("cy", String(position.y));
+    ring.setAttribute("r", "31");
+    ring.setAttribute("fill", "none");
+    ring.setAttribute("stroke", "#111827");
+    ring.setAttribute("stroke-width", "5");
+
+    layer.appendChild(ring);
+}
+
 function GameMap({
     units = [],
     myUnits = [],
+    orders = [],
+
     selectedUnit = null,
     selectedTarget = "",
+    draftOrderType = null,
+
     onSelectUnit,
     onProvinceClick,
+    onOrderTypeSelect,
 }) {
     const containerRef = useRef(null);
 
@@ -150,7 +248,23 @@ function GameMap({
         return result;
     }, [units]);
 
-    // Load the full standard-map SVG from /public/maps/standard.svg.
+    const ordersByUnitId = useMemo(() => {
+        const result = new Map();
+
+        for (const order of orders) {
+            if (order.saved_unit_id != null) {
+                result.set(
+                    Number(order.saved_unit_id),
+                    order
+                );
+            }
+        }
+
+        return result;
+    }, [orders]);
+
+
+
     useEffect(() => {
         let cancelled = false;
 
@@ -191,7 +305,6 @@ function GameMap({
                 const root =
                     documentSvg.documentElement;
 
-                // Make the SVG responsive.
                 root.removeAttribute("width");
                 root.removeAttribute("height");
 
@@ -200,9 +313,6 @@ function GameMap({
                     "width:100%;height:auto;display:block;"
                 );
 
-                // Read unit anchor points embedded in the map metadata.
-                // Some metadata entries use the same historical aliases
-                // as the SVG mouse layer, so normalize them as well.
                 const positions = {};
 
                 const allElements =
@@ -262,11 +372,6 @@ function GameMap({
                         continue;
                     }
 
-                    /*
-                     * Prefer metadata whose source name is already the same
-                     * code as our backend. If only an alias exists (e.g. MID
-                     * for MAO), use the alias position.
-                     */
                     const sourceIsCanonical =
                         sourceProvinceName ===
                         normalizedProvinceName;
@@ -315,7 +420,14 @@ function GameMap({
         };
     }, []);
 
-    // Add click handling, highlights and unit markers after SVG is inserted.
+
+
+    useEffect(() => {
+        setLoadError("");
+        setUnitPositions({});
+        setSvgMarkup("");
+    }, []);
+
     useEffect(() => {
         const container =
             containerRef.current;
@@ -331,100 +443,629 @@ function GameMap({
             return;
         }
 
-        const mouseLayer =
-            svg.querySelector("#MouseLayer");
+        const oldUiLayer =
+            svg.querySelector("#ReactUiLayer");
 
-        const handleProvinceClick = (
-            provinceCode
-        ) => {
-            const unit =
-                unitsByProvince.get(
-                    provinceCode
-                );
-
-            if (
-                unit &&
-                myUnitIds.has(unit.id)
-            ) {
-                onSelectUnit?.(unit);
-                return;
-            }
-
-            if (selectedUnit) {
-                onProvinceClick?.(
-                    provinceCode
-                );
-            }
-        };
-
-        /*
-         * IMPORTANT:
-         *
-         * Do not attach handlers only to "#MouseLayer #PAR", etc.
-         *
-         * The source SVG contains:
-         * - historical sea IDs: mid/nat/nrg/tyn
-         * - separate coast overlays: spa-nc, spa-sc, stp-nc, ...
-         *
-         * Those coast overlays can sit above the generic province path and
-         * intercept the mouse. Event delegation on the complete MouseLayer
-         * lets us map every one of those shapes back to a single backend
-         * province code.
-         */
-        let mouseLayerListener = null;
-
-        if (mouseLayer) {
-            const hitShapes =
-                mouseLayer.querySelectorAll(
-                    "path, polygon, rect, circle, ellipse, g"
-                );
-
-            for (const shape of hitShapes) {
-                shape.style.pointerEvents =
-                    "all";
-
-                shape.style.cursor =
-                    "pointer";
-            }
-
-            mouseLayer.style.pointerEvents =
-                "all";
-
-            mouseLayerListener = (
-                event
-            ) => {
-                let current =
-                    event.target;
-
-                while (
-                    current &&
-                    current !== mouseLayer
-                ) {
-                    const provinceCode =
-                        normalizeSvgProvinceId(
-                            current.id
-                        );
-
-                    if (provinceCode) {
-                        handleProvinceClick(
-                            provinceCode
-                        );
-
-                        return;
-                    }
-
-                    current =
-                        current.parentElement;
-                }
-            };
-
-            mouseLayer.addEventListener(
-                "click",
-                mouseLayerListener
-            );
+        if (oldUiLayer) {
+            oldUiLayer.remove();
         }
 
-        // Reset and apply visual highlighting.
+        const uiLayer =
+            createSvgElement("g");
+
+        uiLayer.setAttribute(
+            "id",
+            "ReactUiLayer"
+        );
+
+        svg.appendChild(uiLayer);
+
+        const defs =
+            createSvgElement("defs");
+
+        uiLayer.appendChild(defs);
+
+        addArrowMarker(
+            defs,
+            "move-arrow",
+            "#111827"
+        );
+
+        addArrowMarker(
+            defs,
+            "support-arrow",
+            "#111827"
+        );
+
+        addArrowMarker(
+            defs,
+            "convoy-arrow",
+            "#111827"
+        );
+
+        const orderLayer =
+            createSvgElement("g");
+
+        orderLayer.setAttribute(
+            "id",
+            "ReactOrderLayer"
+        );
+
+        orderLayer.setAttribute(
+            "pointer-events",
+            "none"
+        );
+
+        uiLayer.appendChild(orderLayer);
+
+        /*
+         * Draw saved orders first so unit markers and the wheel remain
+         * visually above them.
+         */
+        for (const order of orders) {
+            const originCode =
+                order.origin?.toUpperCase();
+
+            const origin =
+                unitPositions[originCode];
+
+            if (!origin) {
+                continue;
+            }
+
+            if (order.order_type === "hold") {
+                drawHold(
+                    orderLayer,
+                    origin
+                );
+
+                continue;
+            }
+
+            if (order.order_type === "move") {
+                const targetCode =
+                    order.target_code
+                        ?.toUpperCase();
+
+                const target =
+                    unitPositions[targetCode];
+
+                if (!target) {
+                    continue;
+                }
+
+                drawArrow(
+                    orderLayer,
+                    origin,
+                    target,
+                    {
+                        markerId:
+                            "move-arrow",
+                    }
+                );
+
+                continue;
+            }
+
+            if (order.order_type === "support") {
+                const targetCode = (
+                    order.support_target_code ||
+                    order.supported_origin
+                )?.toUpperCase();
+
+                const target =
+                    unitPositions[targetCode];
+
+                if (!target) {
+                    continue;
+                }
+
+                drawArrow(
+                    orderLayer,
+                    origin,
+                    target,
+                    {
+                        dash: "3 8",
+                        markerId:
+                            "support-arrow",
+                    }
+                );
+
+                continue;
+            }
+
+            /*
+             * CONVOY is not implemented by the backend yet, but the renderer
+             * is already prepared for it.
+             */
+            if (order.order_type === "convoy") {
+                const targetCode = (
+                    order.target_code ||
+                    order.support_target_code
+                )?.toUpperCase();
+
+                const target =
+                    unitPositions[targetCode];
+
+                if (!target) {
+                    continue;
+                }
+
+                drawArrow(
+                    orderLayer,
+                    origin,
+                    target,
+                    {
+                        dash: "14 6 3 6",
+                        markerId:
+                            "convoy-arrow",
+                    }
+                );
+            }
+        }
+
+        const unitLayer =
+            createSvgElement("g");
+
+        unitLayer.setAttribute(
+            "id",
+            "ReactUnitLayer"
+        );
+
+        unitLayer.setAttribute(
+            "pointer-events",
+            "none"
+        );
+
+        uiLayer.appendChild(unitLayer);
+
+        for (const unit of units) {
+            const provinceCode =
+                unit.province_code
+                    ?.toUpperCase();
+
+            const position =
+                unitPositions[
+                    provinceCode
+                ];
+
+            if (
+                !provinceCode ||
+                !position
+            ) {
+                continue;
+            }
+
+            const hasSavedOrder =
+                ordersByUnitId.has(
+                    Number(unit.id)
+                );
+
+            const group =
+                createSvgElement("g");
+
+            group.setAttribute(
+                "transform",
+                `translate(${position.x} ${position.y})`
+            );
+
+            const circle =
+                createSvgElement("circle");
+
+            circle.setAttribute(
+                "cx",
+                "0"
+            );
+
+            circle.setAttribute(
+                "cy",
+                "0"
+            );
+
+            circle.setAttribute(
+                "r",
+                "22"
+            );
+
+            circle.setAttribute(
+                "fill",
+                COUNTRY_COLORS[
+                    unit.country
+                ] || "#333333"
+            );
+
+            /*
+             * White border + slight brightening = a valid saved order.
+             * This is deliberately separate from selection.
+             */
+            if (hasSavedOrder) {
+                circle.setAttribute(
+                    "stroke",
+                    "#ffffff"
+                );
+
+                circle.setAttribute(
+                    "stroke-width",
+                    "5"
+                );
+
+                circle.style.filter =
+                    "brightness(1.14)";
+            } else {
+                circle.setAttribute(
+                    "stroke",
+                    "#111111"
+                );
+
+                circle.setAttribute(
+                    "stroke-width",
+                    "3"
+                );
+            }
+
+            group.appendChild(circle);
+
+            if (
+                selectedUnit?.id ===
+                unit.id
+            ) {
+                const selectionRing =
+                    createSvgElement(
+                        "circle"
+                    );
+
+                selectionRing.setAttribute(
+                    "cx",
+                    "0"
+                );
+
+                selectionRing.setAttribute(
+                    "cy",
+                    "0"
+                );
+
+                selectionRing.setAttribute(
+                    "r",
+                    "29"
+                );
+
+                selectionRing.setAttribute(
+                    "fill",
+                    "none"
+                );
+
+                selectionRing.setAttribute(
+                    "stroke",
+                    "#f59e0b"
+                );
+
+                selectionRing.setAttribute(
+                    "stroke-width",
+                    "5"
+                );
+
+                group.appendChild(
+                    selectionRing
+                );
+            }
+
+            const text =
+                createSvgElement("text");
+
+            text.setAttribute(
+                "x",
+                "0"
+            );
+
+            text.setAttribute(
+                "y",
+                "7"
+            );
+
+            text.setAttribute(
+                "text-anchor",
+                "middle"
+            );
+
+            text.setAttribute(
+                "font-size",
+                "23"
+            );
+
+            text.setAttribute(
+                "font-weight",
+                "700"
+            );
+
+            text.setAttribute(
+                "fill",
+                "#ffffff"
+            );
+
+            text.setAttribute(
+                "font-family",
+                "Arial, sans-serif"
+            );
+
+            text.textContent =
+                unit.unit_type === "army"
+                    ? "A"
+                    : "F";
+
+            group.appendChild(text);
+            unitLayer.appendChild(group);
+        }
+
+        /*
+         * Radial order wheel. Only appears for one selected own unit.
+         *
+         * Army: H / M / S
+         * Fleet: H / M / S / C
+         *
+         * C is deliberately disabled until backend convoy adjudication exists.
+         */
+        if (
+            selectedUnit &&
+            myUnitIds.has(
+                selectedUnit.id
+            )
+        ) {
+            const selectedPosition =
+                unitPositions[
+                    selectedUnit
+                        .province_code
+                        ?.toUpperCase()
+                ];
+
+            if (selectedPosition) {
+                const wheel =
+                    createSvgElement("g");
+
+                wheel.setAttribute(
+                    "id",
+                    "ReactOrderWheel"
+                );
+
+                wheel.setAttribute(
+                    "transform",
+                    `translate(${selectedPosition.x} ${selectedPosition.y})`
+                );
+
+                wheel.setAttribute(
+                    "pointer-events",
+                    "all"
+                );
+
+                uiLayer.appendChild(
+                    wheel
+                );
+
+                const isFleet =
+                    selectedUnit.unit_type ===
+                    "fleet";
+
+                const options = isFleet
+                    ? [
+                        {
+                            type: "hold",
+                            label: "H",
+                            title: "HOLD",
+                            angle: -90,
+                        },
+                        {
+                            type: "move",
+                            label: "M",
+                            title: "MOVE",
+                            angle: 0,
+                        },
+                        {
+                            type: "support",
+                            label: "S",
+                            title: "SUPPORT",
+                            angle: 90,
+                        },
+                        {
+                            type: "convoy",
+                            label: "C",
+                            title: "CONVOY – zatím není implementovaný",
+                            angle: 180,
+                            disabled: true,
+                        },
+                    ]
+                    : [
+                        {
+                            type: "hold",
+                            label: "H",
+                            title: "HOLD",
+                            angle: -90,
+                        },
+                        {
+                            type: "move",
+                            label: "M",
+                            title: "MOVE",
+                            angle: 30,
+                        },
+                        {
+                            type: "support",
+                            label: "S",
+                            title: "SUPPORT",
+                            angle: 150,
+                        },
+                    ];
+
+                const orbitRadius = 60;
+
+                for (const option of options) {
+                    const radians =
+                        option.angle *
+                        Math.PI /
+                        180;
+
+                    const cx =
+                        Math.cos(radians) *
+                        orbitRadius;
+
+                    const cy =
+                        Math.sin(radians) *
+                        orbitRadius;
+
+                    const button =
+                        createSvgElement("g");
+
+                    button.setAttribute(
+                        "transform",
+                        `translate(${cx} ${cy})`
+                    );
+
+                    button.setAttribute(
+                        "pointer-events",
+                        "all"
+                    );
+
+                    button.style.cursor =
+                        option.disabled
+                            ? "not-allowed"
+                            : "pointer";
+
+                    const active =
+                        draftOrderType ===
+                            option.type ||
+                        (
+                            option.type ===
+                                "support" &&
+                            draftOrderType
+                                ?.startsWith(
+                                    "support"
+                                )
+                        );
+
+                    const buttonCircle =
+                        createSvgElement(
+                            "circle"
+                        );
+
+                    buttonCircle.setAttribute(
+                        "cx",
+                        "0"
+                    );
+
+                    buttonCircle.setAttribute(
+                        "cy",
+                        "0"
+                    );
+
+                    buttonCircle.setAttribute(
+                        "r",
+                        "23"
+                    );
+
+                    buttonCircle.setAttribute(
+                        "fill",
+                        option.disabled
+                            ? "#9ca3af"
+                            : active
+                                ? "#f59e0b"
+                                : "#ffffff"
+                    );
+
+                    buttonCircle.setAttribute(
+                        "stroke",
+                        "#111827"
+                    );
+
+                    buttonCircle.setAttribute(
+                        "stroke-width",
+                        active
+                            ? "5"
+                            : "3"
+                    );
+
+                    const label =
+                        createSvgElement(
+                            "text"
+                        );
+
+                    label.setAttribute(
+                        "x",
+                        "0"
+                    );
+
+                    label.setAttribute(
+                        "y",
+                        "7"
+                    );
+
+                    label.setAttribute(
+                        "text-anchor",
+                        "middle"
+                    );
+
+                    label.setAttribute(
+                        "font-size",
+                        "20"
+                    );
+
+                    label.setAttribute(
+                        "font-weight",
+                        "800"
+                    );
+
+                    label.setAttribute(
+                        "fill",
+                        option.disabled
+                            ? "#4b5563"
+                            : "#111827"
+                    );
+
+                    label.setAttribute(
+                        "pointer-events",
+                        "none"
+                    );
+
+                    label.textContent =
+                        option.label;
+
+                    const title =
+                        createSvgElement(
+                            "title"
+                        );
+
+                    title.textContent =
+                        option.title;
+
+                    button.appendChild(
+                        title
+                    );
+
+                    button.appendChild(
+                        buttonCircle
+                    );
+
+                    button.appendChild(
+                        label
+                    );
+
+                    if (!option.disabled) {
+                        button.addEventListener(
+                            "click",
+                            (event) => {
+                                event.stopPropagation();
+
+                                onOrderTypeSelect?.(
+                                    option.type
+                                );
+                            }
+                        );
+                    }
+
+                    wheel.appendChild(
+                        button
+                    );
+                }
+            }
+        }
+
+        // Visual target highlight.
         for (const code of PROVINCE_CODES) {
             const visibleProvince =
                 getVisibleProvinceElement(
@@ -493,156 +1134,102 @@ function GameMap({
             "brightness(1.10)"
         );
 
-        // Draw current units into the map's built-in UnitLayer.
-        const unitLayer =
-            svg.querySelector("#UnitLayer");
+        const mouseLayer =
+            svg.querySelector(
+                "#MouseLayer"
+            );
 
-        if (unitLayer) {
-            while (unitLayer.firstChild) {
-                unitLayer.removeChild(
-                    unitLayer.firstChild
+        let mouseLayerListener =
+            null;
+
+        if (mouseLayer) {
+            const hitShapes =
+                mouseLayer.querySelectorAll(
+                    "path, polygon, rect, circle, ellipse, g"
                 );
+
+            for (const shape of hitShapes) {
+                shape.style.pointerEvents =
+                    "all";
+
+                shape.style.cursor =
+                    "pointer";
             }
 
-            for (const unit of units) {
-                const provinceCode =
-                    unit.province_code
-                        ?.toUpperCase();
+            mouseLayer.style.pointerEvents =
+                "all";
 
-                const position =
-                    unitPositions[
-                        provinceCode
-                    ];
+            mouseLayerListener = (
+                event
+            ) => {
+                let current =
+                    event.target;
 
-                if (
-                    !provinceCode ||
-                    !position
+                while (
+                    current &&
+                    current !== mouseLayer
                 ) {
-                    continue;
+                    const provinceCode =
+                        normalizeSvgProvinceId(
+                            current.id
+                        );
+
+                    if (provinceCode) {
+                        const unit =
+                            unitsByProvince.get(
+                                provinceCode
+                            ) ?? null;
+
+                        /*
+                         * When an order type is already selected, every map
+                         * click is part of that order. Otherwise, clicking an
+                         * own unit selects it and opens the radial wheel.
+                         */
+                        if (
+                            draftOrderType
+                        ) {
+                            onProvinceClick?.(
+                                provinceCode,
+                                unit
+                            );
+
+                            return;
+                        }
+
+                        if (
+                            unit &&
+                            myUnitIds.has(
+                                unit.id
+                            )
+                        ) {
+                            onSelectUnit?.(
+                                unit
+                            );
+
+                            return;
+                        }
+
+                        if (selectedUnit) {
+                            onProvinceClick?.(
+                                provinceCode,
+                                unit
+                            );
+
+                            return;
+                        }
+
+                        return;
+                    }
+
+                    current =
+                        current.parentElement;
                 }
+            };
 
-                const group =
-                    document.createElementNS(
-                        SVG_NS,
-                        "g"
-                    );
-
-                group.setAttribute(
-                    "transform",
-                    `translate(${position.x} ${position.y})`
-                );
-
-                group.setAttribute(
-                    "pointer-events",
-                    "none"
-                );
-
-                const circle =
-                    document.createElementNS(
-                        SVG_NS,
-                        "circle"
-                    );
-
-                circle.setAttribute(
-                    "cx",
-                    "0"
-                );
-
-                circle.setAttribute(
-                    "cy",
-                    "0"
-                );
-
-                circle.setAttribute(
-                    "r",
-                    "22"
-                );
-
-                circle.setAttribute(
-                    "fill",
-                    COUNTRY_COLORS[
-                        unit.country
-                    ] || "#333333"
-                );
-
-                circle.setAttribute(
-                    "stroke",
-                    "#111111"
-                );
-
-                circle.setAttribute(
-                    "stroke-width",
-                    "3"
-                );
-
-                if (
-                    selectedUnit?.id ===
-                    unit.id
-                ) {
-                    circle.setAttribute(
-                        "stroke",
-                        "#f59e0b"
-                    );
-
-                    circle.setAttribute(
-                        "stroke-width",
-                        "7"
-                    );
-                }
-
-                const text =
-                    document.createElementNS(
-                        SVG_NS,
-                        "text"
-                    );
-
-                text.setAttribute(
-                    "x",
-                    "0"
-                );
-
-                text.setAttribute(
-                    "y",
-                    "7"
-                );
-
-                text.setAttribute(
-                    "text-anchor",
-                    "middle"
-                );
-
-                text.setAttribute(
-                    "font-size",
-                    "23"
-                );
-
-                text.setAttribute(
-                    "font-weight",
-                    "700"
-                );
-
-                text.setAttribute(
-                    "fill",
-                    "#ffffff"
-                );
-
-                text.setAttribute(
-                    "font-family",
-                    "Arial, sans-serif"
-                );
-
-                text.textContent =
-                    unit.unit_type === "army"
-                        ? "A"
-                        : "F";
-
-                group.appendChild(circle);
-                group.appendChild(text);
-
-                unitLayer.appendChild(
-                    group
-                );
-            }
+            mouseLayer.addEventListener(
+                "click",
+                mouseLayerListener
+            );
         }
 
         return () => {
@@ -655,6 +1242,8 @@ function GameMap({
                     mouseLayerListener
                 );
             }
+
+            uiLayer.remove();
         };
     }, [
         svgMarkup,
@@ -662,10 +1251,14 @@ function GameMap({
         units,
         unitsByProvince,
         myUnitIds,
+        orders,
+        ordersByUnitId,
         selectedUnit,
         selectedTarget,
+        draftOrderType,
         onSelectUnit,
         onProvinceClick,
+        onOrderTypeSelect,
     ]);
 
     if (loadError) {
@@ -676,8 +1269,7 @@ function GameMap({
                 <p>{loadError}</p>
 
                 <p>
-                    Zkontroluj, že existuje
-                    soubor:{" "}
+                    Zkontroluj, že existuje soubor:{" "}
                     <code>
                         frontend/public/maps/standard.svg
                     </code>
@@ -700,15 +1292,15 @@ function GameMap({
                     width: "100%",
                     maxWidth: "1100px",
                     margin: "0 auto",
-                    border:
-                        "1px solid #aaa",
+                    border: "1px solid #aaa",
                     overflow: "hidden",
                     background: "#c5dfea",
                 }}
                 dangerouslySetInnerHTML={{
                     __html: svgMarkup,
                 }}
-            />
+            >
+            </div>
         </section>
     );
 }
