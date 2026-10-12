@@ -372,6 +372,7 @@ function GameDetail() {
                                                     key={unit.id}
                                                     gameId={gameId}
                                                     unit={unit}
+                                                    allUnits={game.units}
                                                     existingOrder={existingOrder}
                                                     onOrderSaved={handleOrderSaved}
                                                 />

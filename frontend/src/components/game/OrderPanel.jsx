@@ -5,9 +5,15 @@ import { submitOrder } from "../../services/orders";
 function OrderPanel({
     gameId,
     unit,
+    allUnits,
     existingOrder,
     onOrderSaved,
 }) {
+
+    const [supportedUnitId, setSupportedUnitId] = useState("");
+    const [supportMode, setSupportMode] = useState("hold");
+    const [supportTarget, setSupportTarget] = useState("");
+
     const [orderType, setOrderType] = useState("hold");
     const [target, setTarget] = useState("");
 
@@ -17,31 +23,48 @@ function OrderPanel({
 
 
 
-    useEffect(() => {
+useEffect(() => {
+    if (!existingOrder) {
+        setOrderType("hold");
+        setTarget("");
 
+        setSupportedUnitId("");
+        setSupportMode("hold");
+        setSupportTarget("");
 
-         console.log(
-            "ORDER PANEL:",
-            unit.id,
-            existingOrder
+        return;
+    }
+
+    setOrderType(existingOrder.order_type);
+
+    if (existingOrder.order_type === "move") {
+        setTarget(
+            existingOrder.target_code ?? ""
+        );
+    } else {
+        setTarget("");
+    }
+
+    if (existingOrder.order_type === "support") {
+        setSupportedUnitId(
+            existingOrder.supported_unit_id?.toString() ?? ""
         );
 
-        if (!existingOrder) {
-            setOrderType("hold");
-            setTarget("");
-            return;
-        }
-
-        setOrderType(existingOrder.order_type);
-
-        if (existingOrder.order_type === "move") {
-            setTarget(
-                existingOrder.target_code ?? ""
+        if (existingOrder.support_target_code) {
+            setSupportMode("move");
+            setSupportTarget(
+                existingOrder.support_target_code
             );
         } else {
-            setTarget("");
+            setSupportMode("hold");
+            setSupportTarget("");
         }
-    }, [existingOrder, unit.id]);
+    } else {
+        setSupportedUnitId("");
+        setSupportMode("hold");
+        setSupportTarget("");
+    }
+}, [existingOrder, unit.id]);
 
 
     const handleSubmit = async (event) => {
@@ -69,6 +92,38 @@ function OrderPanel({
 
             data.target = cleanedTarget;
         }
+
+        if (orderType === "support") {
+            if (!supportedUnitId) {
+                setError(
+                    "Vyber jednotku, kterou chceš podporovat."
+                );
+                return;
+            }
+
+            data.supported_unit_id =
+                Number(supportedUnitId);
+
+            if (supportMode === "move") {
+                const cleanedSupportTarget =
+                    supportTarget
+                        .trim()
+                        .toUpperCase();
+
+                if (!cleanedSupportTarget) {
+                    setError(
+                        "Zadej cílovou provincii podporovaného pohybu."
+                    );
+                    return;
+                }
+
+                data.support_target =
+                    cleanedSupportTarget;
+            }
+        }
+
+
+
 
         try {
             setSaving(true);
@@ -163,7 +218,24 @@ function OrderPanel({
 
                         MOVE
                     </label>
+
+
+
+                    <label>
+                        <input
+                            type="radio"
+                            name={`order-${unit.id}`}
+                            value="support"
+                            checked={orderType === "support"}
+                            onChange={() =>
+                                setOrderType("support")
+                            }
+                        />
+
+                        SUPPORT
+                    </label>
                 </div>
+
 
                 {orderType === "move" && (
                     <div>
@@ -184,6 +256,101 @@ function OrderPanel({
                         </label>
                     </div>
                 )}
+
+
+                {orderType === "support" && (
+                    <div>
+                        <div>
+                            <label>
+                                Podporovaná jednotka:{" "}
+
+                                <select
+                                    value={supportedUnitId}
+                                    onChange={(event) =>
+                                        setSupportedUnitId(
+                                            event.target.value
+                                        )
+                                    }
+                                >
+                                    <option value="">
+                                        -- vyber jednotku --
+                                    </option>
+
+                                    {allUnits
+                                        .filter(
+                                            (otherUnit) =>
+                                                otherUnit.id !== unit.id
+                                        )
+                                        .map((otherUnit) => (
+                                            <option
+                                                key={otherUnit.id}
+                                                value={otherUnit.id}
+                                            >
+                                                {otherUnit.unit_type === "army"
+                                                    ? "A"
+                                                    : "F"}{" "}
+                                                {otherUnit.province_name}
+                                                {" — "}
+                                                {otherUnit.country_name}
+                                            </option>
+                                        ))}
+                                </select>
+                            </label>
+                        </div>
+
+                        <div>
+                            <label>
+                                <input
+                                    type="radio"
+                                    checked={supportMode === "hold"}
+                                    onChange={() =>
+                                        setSupportMode("hold")
+                                    }
+                                />
+
+                                Podpořit HOLD
+                            </label>
+
+                            {" "}
+
+                            <label>
+                                <input
+                                    type="radio"
+                                    checked={supportMode === "move"}
+                                    onChange={() =>
+                                        setSupportMode("move")
+                                    }
+                                />
+
+                                Podpořit MOVE
+                            </label>
+                        </div>
+
+                        {supportMode === "move" && (
+                            <div>
+                                <label>
+                                    Cílová provincie:{" "}
+
+                                    <input
+                                        type="text"
+                                        maxLength={3}
+                                        value={supportTarget}
+                                        placeholder="BUR"
+                                        onChange={(event) =>
+                                            setSupportTarget(
+                                                event.target.value
+                                            )
+                                        }
+                                    />
+                                </label>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+
+
+
 
                 <button
                     type="submit"
