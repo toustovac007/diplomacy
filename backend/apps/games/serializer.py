@@ -3,7 +3,13 @@ from rest_framework import serializers
 
 from .models import Game, GamePlayer, GamePhase, Unit
 
-
+from apps.games.models import (
+    Game,
+    GamePlayer,
+    GamePhase,
+    Unit,
+    SupplyCenterOwnership,
+)
 
 
 class GamePlayerSerializer(serializers.ModelSerializer):
@@ -116,6 +122,33 @@ class UnitSerializer(serializers.ModelSerializer):
         )
 
 
+class SupplyCenterOwnershipSerializer(serializers.ModelSerializer):
+    province_code = serializers.CharField(
+        source="province.code",
+        read_only=True,
+    )
+
+    province_name = serializers.CharField(
+        source="province.name",
+        read_only=True,
+    )
+
+    owner_country = serializers.SerializerMethodField()
+
+    def get_owner_country(self, obj):
+        if obj.owner_id is None:
+            return None
+
+        return obj.owner.country
+
+    class Meta:
+        model = SupplyCenterOwnership
+
+        fields = (
+            "province_code",
+            "province_name",
+            "owner_country",
+        )
 
 
 class GameSerializer(serializers.ModelSerializer):
@@ -134,6 +167,12 @@ class GameSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    supply_centers = SupplyCenterOwnershipSerializer(
+        source="supply_center_ownerships",
+        many=True,
+        read_only=True,
+    )
+
     current_phase = serializers.SerializerMethodField()
 
     class Meta:
@@ -148,6 +187,7 @@ class GameSerializer(serializers.ModelSerializer):
             "created_at",
             "players",
             "units",
+            "supply_centers",
             "current_phase",
         )
 
@@ -187,3 +227,4 @@ class GameSerializer(serializers.ModelSerializer):
             return None
 
         return GamePhaseSerializer(phase).data
+

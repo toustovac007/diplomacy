@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+
+
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PROVINCE_CODES = [
@@ -42,6 +45,19 @@ const COUNTRY_COLORS = {
     RUS: "#757d91",
     TUR: "#b9a61c",
 };
+
+const SUPPLY_CENTER_COLORS = {
+    AUS: "#e0b7b0",
+    ENG: "#c8aff0",
+    FRA: "#9db9ff",
+    GER: "#cbbcab",
+    ITA: "#9bd49b",
+    RUS: "#bcc3d1",
+    TUR: "#e3d56f",
+};
+
+const NEUTRAL_SUPPLY_CENTER_COLOR =
+    "#e6dfb3";
 
 function createSvgElement(name) {
     return document.createElementNS(SVG_NS, name);
@@ -213,14 +229,20 @@ function GameMap({
     units = [],
     myUnits = [],
     orders = [],
+    supplyCenters = [],
 
     selectedUnit = null,
+    supportedUnit = null,
     selectedTarget = "",
     draftOrderType = null,
+
+    coastSelection = null,
 
     onSelectUnit,
     onProvinceClick,
     onOrderTypeSelect,
+    onSupportModeSelect,
+    onCoastSelect,
 }) {
     const containerRef = useRef(null);
 
@@ -422,11 +444,6 @@ function GameMap({
 
 
 
-    useEffect(() => {
-        setLoadError("");
-        setUnitPositions({});
-        setSvgMarkup("");
-    }, []);
 
     useEffect(() => {
         const container =
@@ -442,6 +459,37 @@ function GameMap({
         if (!svg) {
             return;
         }
+
+        for (const center of supplyCenters) {
+            const provinceCode =
+                center.province_code?.toUpperCase();
+
+            if (!provinceCode) {
+                continue;
+            }
+
+            const province =
+                getVisibleProvinceElement(
+                    svg,
+                    provinceCode
+                );
+
+            if (!province) {
+                continue;
+            }
+
+            const owner =
+                center.owner_country;
+
+            province.style.fill =
+                owner
+                    ? (
+                        SUPPLY_CENTER_COLORS[owner] ??
+                        "#dddddd"
+                    )
+                    : NEUTRAL_SUPPLY_CENTER_COLOR;
+        }
+
 
         const oldUiLayer =
             svg.querySelector("#ReactUiLayer");
@@ -1065,6 +1113,334 @@ function GameMap({
             }
         }
 
+
+
+
+
+
+if (
+    draftOrderType === "support-mode" &&
+    supportedUnit
+) {
+    const position =
+        unitPositions[
+            supportedUnit
+                .province_code
+                ?.toUpperCase()
+        ];
+
+    if (position) {
+        const supportWheel =
+            createSvgElement("g");
+
+        supportWheel.setAttribute(
+            "id",
+            "ReactSupportModeWheel"
+        );
+
+        supportWheel.setAttribute(
+            "transform",
+            `translate(${position.x} ${position.y})`
+        );
+
+        supportWheel.setAttribute(
+            "pointer-events",
+            "all"
+        );
+
+        uiLayer.appendChild(
+            supportWheel
+        );
+
+        const options = [
+            {
+                mode: "hold",
+                label: "H",
+                title: "SUPPORT HOLD",
+                x: -48,
+                y: -48,
+            },
+            {
+                mode: "move",
+                label: "M",
+                title: "SUPPORT MOVE",
+                x: 48,
+                y: -48,
+            },
+        ];
+
+        for (const option of options) {
+            const button =
+                createSvgElement("g");
+
+            button.setAttribute(
+                "transform",
+                `translate(${option.x} ${option.y})`
+            );
+
+            button.style.cursor =
+                "pointer";
+
+            button.setAttribute(
+                "pointer-events",
+                "all"
+            );
+
+            const circle =
+                createSvgElement("circle");
+
+            circle.setAttribute(
+                "r",
+                "22"
+            );
+
+            circle.setAttribute(
+                "fill",
+                "#ffffff"
+            );
+
+            circle.setAttribute(
+                "stroke",
+                "#2563eb"
+            );
+
+            circle.setAttribute(
+                "stroke-width",
+                "4"
+            );
+
+            const text =
+                createSvgElement("text");
+
+            text.setAttribute(
+                "x",
+                "0"
+            );
+
+            text.setAttribute(
+                "y",
+                "7"
+            );
+
+            text.setAttribute(
+                "text-anchor",
+                "middle"
+            );
+
+            text.setAttribute(
+                "font-size",
+                "19"
+            );
+
+            text.setAttribute(
+                "font-weight",
+                "800"
+            );
+
+            text.setAttribute(
+                "fill",
+                "#111827"
+            );
+
+            text.setAttribute(
+                "pointer-events",
+                "none"
+            );
+
+            text.textContent =
+                option.label;
+
+            const title =
+                createSvgElement("title");
+
+            title.textContent =
+                option.title;
+
+            button.appendChild(title);
+            button.appendChild(circle);
+            button.appendChild(text);
+
+            button.addEventListener(
+                "click",
+                (event) => {
+                    event.stopPropagation();
+
+                    onSupportModeSelect?.(
+                        option.mode
+                    );
+                }
+            );
+
+            supportWheel.appendChild(
+                button
+            );
+        }
+    }
+}
+
+
+if (coastSelection) {
+    const position =
+        unitPositions[
+            coastSelection
+                .provinceCode
+                ?.toUpperCase()
+        ];
+
+    if (position) {
+        const coastWheel =
+            createSvgElement("g");
+
+        coastWheel.setAttribute(
+            "id",
+            "ReactCoastSelector"
+        );
+
+        coastWheel.setAttribute(
+            "transform",
+            `translate(${position.x} ${position.y})`
+        );
+
+        coastWheel.setAttribute(
+            "pointer-events",
+            "all"
+        );
+
+        uiLayer.appendChild(
+            coastWheel
+        );
+
+        const options =
+            coastSelection.options;
+
+        const spacing = 52;
+
+        options.forEach(
+            (coastCode, index) => {
+                const offset =
+                    (
+                        index -
+                        (options.length - 1) / 2
+                    ) * spacing;
+
+                const button =
+                    createSvgElement("g");
+
+                button.setAttribute(
+                    "transform",
+                    `translate(${offset} 52)`
+                );
+
+                button.setAttribute(
+                    "pointer-events",
+                    "all"
+                );
+
+                button.style.cursor =
+                    "pointer";
+
+                const circle =
+                    createSvgElement("circle");
+
+                circle.setAttribute(
+                    "r",
+                    "23"
+                );
+
+                circle.setAttribute(
+                    "fill",
+                    "#ffffff"
+                );
+
+                circle.setAttribute(
+                    "stroke",
+                    "#ef4444"
+                );
+
+                circle.setAttribute(
+                    "stroke-width",
+                    "4"
+                );
+
+                const text =
+                    createSvgElement("text");
+
+                text.setAttribute(
+                    "x",
+                    "0"
+                );
+
+                text.setAttribute(
+                    "y",
+                    "6"
+                );
+
+                text.setAttribute(
+                    "text-anchor",
+                    "middle"
+                );
+
+                text.setAttribute(
+                    "font-size",
+                    "15"
+                );
+
+                text.setAttribute(
+                    "font-weight",
+                    "800"
+                );
+
+                text.setAttribute(
+                    "fill",
+                    "#111827"
+                );
+
+                text.setAttribute(
+                    "pointer-events",
+                    "none"
+                );
+
+                text.textContent =
+                    coastCode.toUpperCase();
+
+                const title =
+                    createSvgElement("title");
+
+                title.textContent =
+                    `Pobřeží ${coastCode.toUpperCase()}`;
+
+                button.appendChild(
+                    title
+                );
+
+                button.appendChild(
+                    circle
+                );
+
+                button.appendChild(
+                    text
+                );
+
+                button.addEventListener(
+                    "click",
+                    (event) => {
+                        event.stopPropagation();
+
+                        onCoastSelect?.(
+                            coastCode
+                        );
+                    }
+                );
+
+                coastWheel.appendChild(
+                    button
+                );
+            }
+        );
+    }
+}
+
+
         // Visual target highlight.
         for (const code of PROVINCE_CODES) {
             const visibleProvince =
@@ -1249,9 +1625,14 @@ function GameMap({
         svgMarkup,
         unitPositions,
         units,
+        supplyCenters,
+        supportedUnit,
+        onSupportModeSelect,
         unitsByProvince,
         myUnitIds,
         orders,
+        coastSelection,
+        onCoastSelect,
         ordersByUnitId,
         selectedUnit,
         selectedTarget,

@@ -14,12 +14,18 @@ import {
 
 import GameMap from "../components/game/GameMap";
 
-function GameDetail() {
-    const [draftOrderType, setDraftOrderType] =
-        useState(null);
+const MULTI_COASTS = {
+    SPA: ["nc", "sc"],
+    STP: ["nc", "sc"],
+    BUL: ["ec", "sc"],
+};
 
-    const [supportedUnit, setSupportedUnit] =
-        useState(null);
+
+function GameDetail() {
+
+    const [draftOrderType, setDraftOrderType] = useState(null);
+    const [supportedUnit, setSupportedUnit] = useState(null);
+    const [coastSelection, setCoastSelection] = useState(null);
 
     const [mapOrderMessage, setMapOrderMessage] =
         useState("");
@@ -133,6 +139,7 @@ function GameDetail() {
             setDraftOrderType(null);
             setMapTarget("");
             setSupportedUnit(null);
+            setCoastSelection(null);
 
             // Po úspěšném uložení výběr zavřeme.
             // Bílý okraj a šipka už ukážou uložený stav.
@@ -164,50 +171,52 @@ function GameDetail() {
         provinceCode,
         clickedUnit
     ) => {
-        setMapOrderError("");
-
         if (!selectedUnit) {
             return;
         }
 
-        // =========================
+        setMapOrderError("");
+
         // MOVE
-        // =========================
+if (draftOrderType === "move") {
+    setMapTarget(provinceCode);
 
-        if (draftOrderType === "move") {
-            setMapTarget(
-                provinceCode
-            );
+    const coastOptions =
+        MULTI_COASTS[provinceCode];
 
-            await saveMapOrder({
-                unit_id: selectedUnit.id,
-                order_type: "move",
-                target: provinceCode,
-            });
+    if (
+        selectedUnit.unit_type === "fleet" &&
+        coastOptions
+    ) {
+        setCoastSelection({
+            mode: "move",
+            provinceCode,
+            options: coastOptions,
+        });
 
-            return;
-        }
+        return;
+    }
 
-        // =========================
-        // SUPPORT - výběr jednotky
-        // =========================
+    await saveMapOrder({
+        unit_id: selectedUnit.id,
+        order_type: "move",
+        target: provinceCode,
+    });
 
-        if (
-            draftOrderType ===
-            "support-unit"
-        ) {
+    return;
+}
+
+        // SUPPORT - nejdřív vybírám jednotku
+        if (draftOrderType === "support-unit") {
             if (!clickedUnit) {
                 setMapOrderError(
-                    "Klikni na jednotku, kterou chceš podporovat."
+                    "Pro SUPPORT nejdřív klikni na jednotku."
                 );
 
                 return;
             }
 
-            if (
-                clickedUnit.id ===
-                selectedUnit.id
-            ) {
+            if (clickedUnit.id === selectedUnit.id) {
                 setMapOrderError(
                     "Jednotka nemůže podporovat sama sebe."
                 );
@@ -215,43 +224,94 @@ function GameDetail() {
                 return;
             }
 
-            setSupportedUnit(
-                clickedUnit
-            );
-
-            setDraftOrderType(
-                "support-mode"
-            );
+            setSupportedUnit(clickedUnit);
+            setDraftOrderType("support-mode");
 
             return;
         }
 
-        // =========================
-        // SUPPORT MOVE - cíl
-        // =========================
+        // SUPPORT MOVE - vybírám cíl
+if (
+    draftOrderType === "support-target"
+) {
+    if (!supportedUnit) {
+        return;
+    }
 
-        if (
-            draftOrderType ===
-            "support-target"
-        ) {
-            if (!supportedUnit) {
-                return;
-            }
+    setMapTarget(provinceCode);
 
-            setMapTarget(
-                provinceCode
-            );
+    const coastOptions =
+        MULTI_COASTS[provinceCode];
 
-            await saveMapOrder({
-                unit_id: selectedUnit.id,
-                order_type: "support",
-                supported_unit_id:
-                    supportedUnit.id,
-                support_target:
-                    provinceCode,
-            });
-        }
+    if (
+        supportedUnit.unit_type === "fleet" &&
+        coastOptions
+    ) {
+        setCoastSelection({
+            mode: "support",
+            provinceCode,
+            options: coastOptions,
+        });
+
+        return;
+    }
+
+    await saveMapOrder({
+        unit_id: selectedUnit.id,
+        order_type: "support",
+        supported_unit_id:
+            supportedUnit.id,
+        support_target:
+            provinceCode,
+    });
+
+    return;
+}
     };
+
+
+const handleCoastSelect = async (coastCode) => {
+    if (
+        !coastSelection ||
+        !selectedUnit
+    ) {
+        return;
+    }
+
+    const {
+        mode,
+        provinceCode,
+    } = coastSelection;
+
+    if (mode === "move") {
+        await saveMapOrder({
+            unit_id: selectedUnit.id,
+            order_type: "move",
+            target: provinceCode,
+            target_coast_code:
+                coastCode,
+        });
+
+        return;
+    }
+
+    if (
+        mode === "support" &&
+        supportedUnit
+    ) {
+        await saveMapOrder({
+            unit_id: selectedUnit.id,
+            order_type: "support",
+            supported_unit_id:
+                supportedUnit.id,
+            support_target:
+                provinceCode,
+            support_target_coast_code:
+                coastCode,
+        });
+    }
+};
+
 
 
 
@@ -264,6 +324,8 @@ function GameDetail() {
         setMapOrderMessage("");
         setMapTarget("");
         setSupportedUnit(null);
+        setCoastSelection(null);
+
 
         if (orderType === "hold") {
             await saveMapOrder({
@@ -280,9 +342,29 @@ function GameDetail() {
         }
 
         if (orderType === "support") {
-            setDraftOrderType(
-                "support-unit"
-            );
+            setDraftOrderType("support-unit");
+        }
+    };
+
+
+    const handleSupportModeSelect = async (mode) => {
+        if (!selectedUnit || !supportedUnit) {
+            return;
+        }
+
+        if (mode === "hold") {
+            await saveMapOrder({
+                unit_id: selectedUnit.id,
+                order_type: "support",
+                supported_unit_id: supportedUnit.id,
+            });
+
+            return;
+        }
+
+        if (mode === "move") {
+            setMapTarget("");
+            setDraftOrderType("support-target");
         }
     };
 
@@ -581,17 +663,24 @@ function GameDetail() {
                                 units={game.units}
                                 myUnits={myUnits}
                                 orders={orders}
+                                supplyCenters={
+                                    game.supply_centers ?? []
+                                }
 
                                 selectedUnit={selectedUnit}
+                                supportedUnit={supportedUnit}
                                 selectedTarget={mapTarget}
                                 draftOrderType={draftOrderType}
+
+                                coastSelection={coastSelection}
 
                                 onSelectUnit={(unit) => {
                                     setSelectedUnit(unit);
 
+                                    setSupportedUnit(null);
                                     setMapTarget("");
                                     setDraftOrderType(null);
-                                    setSupportedUnit(null);
+                                    setCoastSelection(null);
 
                                     setMapOrderError("");
                                     setMapOrderMessage("");
@@ -601,8 +690,16 @@ function GameDetail() {
                                     handleMapOrderType
                                 }
 
+                                onSupportModeSelect={
+                                    handleSupportModeSelect
+                                }
+
                                 onProvinceClick={
                                     handleMapProvinceClick
+                                }
+
+                                onCoastSelect={
+                                    handleCoastSelect
                                 }
                             />
 
