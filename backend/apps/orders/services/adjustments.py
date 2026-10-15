@@ -7,34 +7,7 @@ from apps.maps.models import Province
 from collections import deque
 
 from apps.maps.models import ProvinceAdjacency
-
-def get_adjustment_delta(player):
-    """
-    Kladné číslo = počet BUILD.
-    Záporné číslo = počet povinných DISBAND.
-    Nula = žádná změna.
-    """
-
-    centers = (
-        SupplyCenterOwnership.objects
-        .filter(
-            game=player.game,
-            owner=player,
-        )
-        .count()
-    )
-
-    units = (
-        Unit.objects
-        .filter(
-            game=player.game,
-            owner=player,
-            is_dislodged=False,
-        )
-        .count()
-    )
-
-    return centers - units
+from apps.games.services.supply_centers import get_adjustment_delta
 
 
 def get_build_count(player):

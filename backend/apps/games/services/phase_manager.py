@@ -6,6 +6,7 @@ from apps.games.models import GamePhase
 
 from apps.games.services.supply_centers import (
     update_supply_center_ownership,
+    get_adjustment_delta,
 )
 
 from django.db import transaction
@@ -81,6 +82,15 @@ def create_next_after_retreat(phase):
         update_supply_center_ownership(
             game
         )
+
+        if all(get_adjustment_delta(player) == 0 for player in game.players.all()):
+            return create_phase(
+                game=game,
+                sequence=next_sequence,
+                year=phase.year + 1,
+                season="spring",
+                phase_type="movement",
+            )
 
         return create_phase(
             game=game,

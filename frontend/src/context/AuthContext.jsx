@@ -9,7 +9,8 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         const loadUser = async () => {
-            const token = localStorage.getItem("access_token");
+            const token = sessionStorage.getItem("access_token");
+            const refreshToken = sessionStorage.getItem("refresh_token");
 
             if (!token) {
                 setLoading(false);
@@ -18,13 +19,17 @@ export function AuthProvider({ children }) {
 
             try {
                 const response = await api.get("users/me/");
-                setUser(response.data);
+                if (sessionStorage.getItem("refresh_token") === refreshToken) {
+                    setUser(response.data);
+                }
             } catch (error) {
                 console.error("Nepodařilo se načíst uživatele:", error);
 
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("refresh_token");
-                setUser(null);
+                if (sessionStorage.getItem("refresh_token") === refreshToken) {
+                    sessionStorage.removeItem("access_token");
+                    sessionStorage.removeItem("refresh_token");
+                    setUser(null);
+                }
             } finally {
                 setLoading(false);
             }
@@ -41,13 +46,24 @@ export function AuthProvider({ children }) {
 
         const { access, refresh } = response.data;
 
-        localStorage.setItem("access_token", access);
-        localStorage.setItem("refresh_token", refresh);
+        setUser(null);
+        sessionStorage.setItem("access_token", access);
+        sessionStorage.setItem("refresh_token", refresh);
 
-        const userResponse = await api.get("users/me/");
-        setUser(userResponse.data);
-
-        return userResponse.data;
+        try {
+            const userResponse = await api.get("users/me/");
+            if (sessionStorage.getItem("refresh_token") === refresh) {
+                setUser(userResponse.data);
+            }
+            return userResponse.data;
+        } catch (error) {
+            if (sessionStorage.getItem("refresh_token") === refresh) {
+                sessionStorage.removeItem("access_token");
+                sessionStorage.removeItem("refresh_token");
+                setUser(null);
+            }
+            throw error;
+        }
     };
 
     const register = async (username, email, password) => {
@@ -62,8 +78,8 @@ export function AuthProvider({ children }) {
     };
 
     const logout = () => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        sessionStorage.removeItem("access_token");
+        sessionStorage.removeItem("refresh_token");
 
         setUser(null);
     };

@@ -1,5 +1,9 @@
 import axios from "axios";
 
+// Discard shared legacy credentials; each tab must establish its own session.
+localStorage.removeItem("access_token");
+localStorage.removeItem("refresh_token");
+
 const api = axios.create({
     baseURL: "http://127.0.0.1:8000/api/",
 });
@@ -8,10 +12,12 @@ const api = axios.create({
 // Přidání access tokenu ke každému requestu
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem("access_token");
+        const token = sessionStorage.getItem("access_token");
 
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
+        } else {
+            delete config.headers.Authorization;
         }
 
         return config;
@@ -36,7 +42,7 @@ api.interceptors.response.use(
             originalRequest._retry = true;
 
             const refreshToken =
-                localStorage.getItem("refresh_token");
+                sessionStorage.getItem("refresh_token");
 
             if (!refreshToken) {
                 return Promise.reject(error);
@@ -52,7 +58,11 @@ api.interceptors.response.use(
 
                 const newAccessToken = response.data.access;
 
-                localStorage.setItem(
+                if (sessionStorage.getItem("refresh_token") !== refreshToken) {
+                    return Promise.reject(error);
+                }
+
+                sessionStorage.setItem(
                     "access_token",
                     newAccessToken
                 );
@@ -64,8 +74,12 @@ api.interceptors.response.use(
 
             } catch (refreshError) {
 
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("refresh_token");
+                if (sessionStorage.getItem("refresh_token") !== refreshToken) {
+                    return Promise.reject(refreshError);
+                }
+
+                sessionStorage.removeItem("access_token");
+                sessionStorage.removeItem("refresh_token");
 
                 // Obnovení stránky vrátí uživatele na login
                 window.location.reload();

@@ -1,4 +1,6 @@
 from django.shortcuts import render
+from django.db import transaction
+from django.utils import timezone
 
 from rest_framework import status
 from rest_framework.response import Response
@@ -19,6 +21,11 @@ from .services.adjudication import (
 from .services.adjustments import (
     AdjustmentError,
     resolve_adjustment_phase,
+    get_adjustment_delta,
+    get_build_count,
+    get_disband_count,
+    get_buildable_home_centers,
+    can_build_unit,
 )
 
 from .serializers import (
@@ -151,6 +158,39 @@ class ResolvePhaseView(APIView):
 class RetreatOrderListCreateView(generics.ListCreateAPIView):
     serializer_class = RetreatOrderSerializer
     permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        # Serialize submissions with each other and with manual/deadline
+        # resolution. Recheck status after acquiring the phase lock.
+        phase = get_object_or_404(
+            GamePhase.objects.select_for_update(),
+            pk=self.get_phase().pk,
+            status="open",
+        )
+        context = self.get_serializer_context()
+        context["phase"] = phase
+        serializer = self.get_serializer(data=request.data, context=context)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        # DISBAND (or a retreat collision) deletes the unit and its orders.
+        # Return the saved decision snapshot, not a deleted model instance.
+        data = dict(serializer.data)
+        dislodged_ids = set(
+            phase.game.units.filter(is_dislodged=True).values_list("id", flat=True)
+        )
+        decided_ids = set(
+            Order.objects.filter(
+                phase=phase, unit_id__in=dislodged_ids,
+                order_type__in=("retreat", "disband"),
+            ).values_list("unit_id", flat=True)
+        )
+        complete = bool(dislodged_ids) and decided_ids == dislodged_ids
+        if complete:
+            resolve_retreat_phase(phase)
+        data["phase_resolved"] = complete
+        return Response(data, status=status.HTTP_201_CREATED)
 
     def get_game(self):
         return get_object_or_404(
@@ -319,6 +359,58 @@ class AdjustmentOrderListCreateView(
         context["player"] = self.get_player()
 
         return context
+
+class AdjustmentStatusView(AdjustmentOrderListCreateView):
+    http_method_names = ["get", "head", "options"]
+
+    def get(self, request, *args, **kwargs):
+        phase = self.get_phase()
+        player = self.get_player()
+        orders = self.get_queryset()
+        build_count = get_build_count(player)
+        disband_count = get_disband_count(player)
+        unit_count = player.units.filter(is_dislodged=False).count()
+        delta = get_adjustment_delta(player)
+        centers = []
+        reserved = orders.filter(order_type="build").values_list("province_id", flat=True)
+        for province in get_buildable_home_centers(player).exclude(id__in=reserved).prefetch_related("coasts"):
+            coasts = list(province.coasts.all())
+            fleet_coasts = [coast.code for coast in coasts if can_build_unit(player, province, "fleet", coast)]
+            centers.append({
+                "code": province.code, "name": province.name,
+                "province_type": province.province_type,
+                "coast_codes": [coast.code for coast in coasts],
+                "army_allowed": can_build_unit(player, province, "army"),
+                "fleet_allowed": bool(fleet_coasts) or can_build_unit(player, province, "fleet"),
+                "fleet_coast_codes": fleet_coasts,
+            })
+        return Response({
+            "phase_id": phase.id, "delta": delta,
+            "supply_center_count": unit_count + delta, "unit_count": unit_count,
+            "build_count": build_count, "disband_count": disband_count,
+            "builds_remaining": max(0, build_count - orders.filter(order_type="build").count()),
+            "disbands_remaining": max(0, disband_count - orders.filter(order_type="disband").count()),
+            "buildable_home_centers": centers,
+        })
+
+
+class AdjustmentOrderCancelView(AdjustmentOrderListCreateView):
+    http_method_names = ["delete", "options"]
+
+    @transaction.atomic
+    def delete(self, request, *args, **kwargs):
+        # Use the same phase lock as resolution, then recheck its status.
+        phase = get_object_or_404(
+            GamePhase.objects.select_for_update(), pk=self.get_phase().pk,
+            status="open", deadline__gt=timezone.now(),
+        )
+        order = get_object_or_404(
+            AdjustmentOrder, pk=kwargs["order_id"], phase=phase,
+            player=self.get_player(),
+        )
+        order.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ResolveAdjustmentPhaseView(APIView):
     permission_classes = [IsAuthenticated]

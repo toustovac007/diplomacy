@@ -7,10 +7,14 @@ from .views import (
     ResolveRetreatPhaseView,
     AdjustmentOrderListCreateView,
     ResolveAdjustmentPhaseView,
+    AdjustmentStatusView,
+    AdjustmentOrderCancelView,
 )
 
 
 urlpatterns = [
+    path("games/<int:game_id>/adjustment-status/", AdjustmentStatusView.as_view(), name="adjustment-status"),
+    path("games/<int:game_id>/adjustments/<int:order_id>/", AdjustmentOrderCancelView.as_view(), name="adjustment-order-cancel"),
     path(
         "games/<int:game_id>/",
         OrderListCreateView.as_view(),

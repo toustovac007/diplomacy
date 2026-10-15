@@ -227,6 +227,7 @@ function drawHold(layer, position) {
 
 function GameMap({
     phaseType = "movement",
+    buildableCenters = [],
     units = [],
     myUnits = [],
     orders = [],
@@ -242,6 +243,7 @@ function GameMap({
     onSelectUnit,
     onProvinceClick,
     onOrderTypeSelect,
+    onBuildTypeSelect,
     onSupportModeSelect,
     onCoastSelect,
 }) {
@@ -256,15 +258,13 @@ function GameMap({
         [myUnits]
     );
 
-    const unitsByProvince = useMemo(() => {
+    // Province clicks refer to the occupant. Dislodged markers select their
+    // exact unit through their own listener, even when sharing a province.
+    const activeUnitByProvince = useMemo(() => {
         const result = new Map();
 
         for (const unit of units) {
-            if (unit.province_code) {
-                const existing = result.get(unit.province_code.toUpperCase());
-                if (phaseType === "retreat" && existing?.is_dislodged && myUnitIds.has(existing.id)) {
-                    continue;
-                }
+            if (unit.province_code && !unit.is_dislodged) {
                 result.set(
                     unit.province_code.toUpperCase(),
                     unit
@@ -273,7 +273,7 @@ function GameMap({
         }
 
         return result;
-    }, [units, phaseType, myUnitIds]);
+    }, [units]);
 
     const ordersByUnitId = useMemo(() => {
         const result = new Map();
@@ -554,7 +554,8 @@ function GameMap({
         const positionForUnit = (unit) => {
             const position = unitPositions[unit?.province_code?.toUpperCase()];
             return position && phaseType === "retreat" && unit.is_dislodged
-                ? { x: position.x + 30, y: position.y + 30 }
+                // Separate both markers, their selection rings and the R/D wheel.
+                ? { x: position.x + 64, y: position.y + 40 }
                 : position;
         };
 
@@ -768,18 +769,22 @@ function GameMap({
                 const title = createSvgElement("title");
                 title.textContent = "Vytlačená jednotka — vyžaduje ústup nebo rozpuštění";
                 group.appendChild(title);
-                if (myUnitIds.has(unit.id)) {
-                    group.setAttribute("pointer-events", "all");
-                    group.style.cursor = "pointer";
-                    group.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                        if (draftOrderType) {
-                            onProvinceClick?.(provinceCode, unit);
-                        } else {
-                            onSelectUnit?.(unit);
-                        }
-                    });
-                }
+            }
+
+            if (phaseType === "retreat") {
+                const canSelect = unit.is_dislodged && myUnitIds.has(unit.id);
+                // Override the unit layer's pointer-events="none". All markers
+                // consume clicks so an occupant cannot select a defender beneath it.
+                group.setAttribute("pointer-events", "all");
+                group.style.cursor = canSelect || draftOrderType ? "pointer" : "default";
+                group.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    if (draftOrderType) {
+                        onProvinceClick?.(provinceCode, unit);
+                    } else if (canSelect) {
+                        onSelectUnit?.(unit);
+                    }
+                });
             }
 
             if (
@@ -874,20 +879,27 @@ function GameMap({
         }
 
         /*
-         * Radial order wheel. Only appears for one selected own unit.
+         * Radial actions for a selected own unit or an authorized build center.
          *
          * Army: H / M / S
          * Fleet: H / M / S / C
          *
          * C is deliberately disabled until backend convoy adjudication exists.
          */
+        const buildCenter = phaseType === "adjustment"
+            ? buildableCenters.find((center) => center.code === selectedTarget)
+            : null;
         if (
-            selectedUnit &&
+            (buildCenter && coastSelection?.mode !== "build") ||
+            (selectedUnit &&
+            (phaseType !== "retreat" || selectedUnit.is_dislodged) &&
             myUnitIds.has(
                 selectedUnit.id
-            )
+            ))
         ) {
-            const selectedPosition = positionForUnit(selectedUnit);
+            const selectedPosition = buildCenter
+                ? unitPositions[buildCenter.code]
+                : positionForUnit(selectedUnit);
 
             if (selectedPosition) {
                 const wheel =
@@ -895,7 +907,7 @@ function GameMap({
 
                 wheel.setAttribute(
                     "id",
-                    "ReactOrderWheel"
+                    buildCenter ? "ReactBuildWheel" : "ReactOrderWheel"
                 );
 
                 wheel.setAttribute(
@@ -913,14 +925,25 @@ function GameMap({
                 );
 
                 const isFleet =
-                    selectedUnit.unit_type ===
+                    selectedUnit?.unit_type ===
                     "fleet";
 
-                const options = phaseType === "retreat"
+                const options = buildCenter
+                    ? [
+                        ...(buildCenter.army_allowed
+                            ? [{ type: "army", label: "A", title: "BUILD – Armáda", angle: 180 }]
+                            : []),
+                        ...(buildCenter.fleet_allowed
+                            ? [{ type: "fleet", label: "F", title: "BUILD – Flotila", angle: 0 }]
+                            : []),
+                    ]
+                    : phaseType === "retreat"
                     ? [
                         { type: "retreat", label: "R", title: "RETREAT – ústup", angle: -90 },
                         { type: "disband", label: "D", title: "DISBAND – rozpuštění", angle: 90 },
                     ]
+                    : phaseType === "adjustment"
+                    ? [{ type: "disband", label: "D", title: "DISBAND – rozpuštění", angle: -90 }]
                     : isFleet
                     ? [
                         {
@@ -1128,9 +1151,11 @@ function GameMap({
                             (event) => {
                                 event.stopPropagation();
 
-                                onOrderTypeSelect?.(
-                                    option.type
-                                );
+                                if (buildCenter) {
+                                    onBuildTypeSelect?.(option.type);
+                                } else {
+                                    onOrderTypeSelect?.(option.type);
+                                }
                             }
                         );
                     }
@@ -1539,6 +1564,14 @@ if (coastSelection) {
             "brightness(1.10)"
         );
 
+        if (phaseType === "adjustment") {
+            for (const center of buildableCenters) {
+                if (center.code !== selectedTarget) {
+                    highlightProvince(center.code, "#22c55e", "7", "brightness(1.12)");
+                }
+            }
+        }
+
         const mouseLayer =
             svg.querySelector(
                 "#MouseLayer"
@@ -1581,9 +1614,18 @@ if (coastSelection) {
 
                     if (provinceCode) {
                         const unit =
-                            unitsByProvince.get(
+                            activeUnitByProvince.get(
                                 provinceCode
                             ) ?? null;
+
+                        if (phaseType === "adjustment") {
+                            if (unit && myUnitIds.has(unit.id) && !unit.is_dislodged) {
+                                onSelectUnit?.(unit);
+                            } else if (buildableCenters.some((center) => center.code === provinceCode)) {
+                                onProvinceClick?.(provinceCode, unit);
+                            }
+                            return;
+                        }
 
                         /*
                          * When an order type is already selected, every map
@@ -1598,6 +1640,12 @@ if (coastSelection) {
                                 unit
                             );
 
+                            return;
+                        }
+
+                        // In Retreat only the exact owned dislodged marker (or
+                        // the page's unit list) selects a unit, never the province.
+                        if (phaseType === "retreat") {
                             return;
                         }
 
@@ -1652,13 +1700,14 @@ if (coastSelection) {
         };
     }, [
         phaseType,
+        buildableCenters,
         svgMarkup,
         unitPositions,
         units,
         supplyCenters,
         supportedUnit,
         onSupportModeSelect,
-        unitsByProvince,
+        activeUnitByProvince,
         myUnitIds,
         orders,
         coastSelection,
@@ -1670,6 +1719,7 @@ if (coastSelection) {
         onSelectUnit,
         onProvinceClick,
         onOrderTypeSelect,
+        onBuildTypeSelect,
     ]);
 
     if (loadError) {

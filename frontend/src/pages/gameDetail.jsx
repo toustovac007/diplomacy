@@ -12,6 +12,10 @@ import {
     submitOrder,
     getRetreatOrders,
     submitRetreatOrder,
+    getAdjustmentOrders,
+    getAdjustmentStatus,
+    submitAdjustmentOrder,
+    cancelAdjustmentOrder,
 } from "../services/orders";
 
 import GameMap from "../components/game/GameMap";
@@ -43,6 +47,9 @@ function GameDetail() {
 
     const [game, setGame] = useState(null);
     const isRetreat = game?.current_phase?.phase_type === "retreat";
+    const isAdjustment = game?.current_phase?.phase_type === "adjustment";
+    const [adjustmentStatus, setAdjustmentStatus] = useState(null);
+    const [adjustmentSaving, setAdjustmentSaving] = useState(false);
     const [loading, setLoading] = useState(true);
     const [resolving, setResolving] = useState(false);
 
@@ -77,9 +84,16 @@ function GameDetail() {
         try {
             setOrdersLoading(true);
 
-            const data = await (isRetreat ? getRetreatOrders : getOrders)(
-                gameId
-            );
+            let data;
+            if (isAdjustment) {
+                const [savedOrders, status] = await Promise.all([
+                    getAdjustmentOrders(gameId), getAdjustmentStatus(gameId),
+                ]);
+                data = savedOrders;
+                setAdjustmentStatus(status);
+            } else {
+                data = await (isRetreat ? getRetreatOrders : getOrders)(gameId);
+            }
 
             console.log("ORDERS Z API:", data);
 
@@ -87,6 +101,7 @@ function GameDetail() {
             setOrders(data);
 
         } catch (error) {
+            if (isAdjustment) setAdjustmentStatus(null);
             setMapOrderError("Nepodařilo se načíst rozkazy.");
             console.error(
                 "Nepodařilo se načíst rozkazy:",
@@ -113,7 +128,7 @@ function GameDetail() {
         useEffect(() => {
             if (
                 game?.status === "active" &&
-                ["movement", "retreat"].includes(game?.current_phase?.phase_type)
+                ["movement", "retreat", "adjustment"].includes(game?.current_phase?.phase_type)
             ) {
                 loadOrders();
             }
@@ -127,20 +142,23 @@ function GameDetail() {
 
 
     const saveMapOrder = async (data) => {
+        if (isAdjustment && (adjustmentSaving || resolving)) return;
+        if (isAdjustment) setAdjustmentSaving(true);
         setMapOrderError("");
         setMapOrderMessage("");
 
         try {
-            await (isRetreat ? submitRetreatOrder : submitOrder)(
+            const savedOrder = await (isAdjustment ? submitAdjustmentOrder : isRetreat ? submitRetreatOrder : submitOrder)(
                 gameId,
                 data
             );
 
-            await loadOrders();
-
-            setMapOrderMessage(
-                "Rozkaz byl uložen."
-            );
+            const retreatResolved = isRetreat && savedOrder.phase_resolved === true;
+            if (retreatResolved) {
+                setOrders([]);
+            } else {
+                await loadOrders();
+            }
 
             setDraftOrderType(null);
             setMapTarget("");
@@ -150,6 +168,13 @@ function GameDetail() {
             // Po úspěšném uložení výběr zavřeme.
             // Bílý okraj a šipka už ukážou uložený stav.
             setSelectedUnit(null);
+
+            if (retreatResolved) {
+                await loadGame();
+                setMapOrderMessage("Poslední ústupový rozkaz byl uložen a fáze byla vyhodnocena.");
+            } else {
+                setMapOrderMessage("Rozkaz byl uložen.");
+            }
 
         } catch (error) {
             console.error(error);
@@ -168,15 +193,56 @@ function GameDetail() {
                     "Rozkaz se nepodařilo uložit."
                 );
             }
+        } finally {
+            if (isAdjustment) setAdjustmentSaving(false);
         }
     };
 
+    const handleCancelAdjustment = async (orderId) => {
+        if (adjustmentSaving || resolving) return;
+        setAdjustmentSaving(true);
+        setMapOrderError("");
+        setMapOrderMessage("");
+        try {
+            await cancelAdjustmentOrder(gameId, orderId);
+            setSelectedUnit(null);
+            setMapTarget("");
+            setDraftOrderType(null);
+            setCoastSelection(null);
+            await loadOrders();
+            setMapOrderMessage("Rozkaz byl zrušen. Můžeš zadat nový.");
+        } catch (error) {
+            setMapOrderError(error.response?.data?.detail || "Rozkaz se nepodařilo zrušit.");
+        } finally {
+            setAdjustmentSaving(false);
+        }
+    };
+
+    const handleBuild = async (unitType) => {
+        const center = adjustmentStatus?.buildable_home_centers.find((item) => item.code === mapTarget);
+        if (!center || adjustmentSaving || resolving || adjustmentStatus.builds_remaining <= 0) return;
+        if (unitType === "fleet" && center.fleet_coast_codes.length) {
+            setCoastSelection({ mode: "build", provinceCode: center.code, options: center.fleet_coast_codes });
+            return;
+        }
+        await saveMapOrder({ order_type: "build", unit_type: unitType, province: center.code });
+    };
 
 
     const handleMapProvinceClick = async (
         provinceCode,
         clickedUnit
     ) => {
+        if (isAdjustment) {
+            if (adjustmentSaving || !adjustmentStatus || adjustmentStatus.builds_remaining <= 0) return;
+            if (!adjustmentStatus.buildable_home_centers.some((center) => center.code === provinceCode)) return;
+            setMapTarget(provinceCode);
+            setSelectedUnit(null);
+            setDraftOrderType(null);
+            setCoastSelection(null);
+            setMapOrderError("");
+            return;
+        }
         if (!selectedUnit) {
             return;
         }
@@ -278,6 +344,13 @@ if (
 
 
 const handleCoastSelect = async (coastCode) => {
+    if (isAdjustment && coastSelection?.mode === "build") {
+        await saveMapOrder({
+            order_type: "build", unit_type: "fleet",
+            province: coastSelection.provinceCode, coast_code: coastCode,
+        });
+        return;
+    }
     if (
         !coastSelection ||
         !selectedUnit
@@ -333,6 +406,12 @@ const handleCoastSelect = async (coastCode) => {
         setSupportedUnit(null);
         setCoastSelection(null);
 
+        if (isAdjustment) {
+            if (orderType === "disband" && !selectedUnit.is_dislodged && adjustmentStatus?.disbands_remaining > 0) {
+                await saveMapOrder({ order_type: "disband", unit_id: selectedUnit.id });
+            }
+            return;
+        }
         if (isRetreat) {
             if (!selectedUnit.is_dislodged) return;
             if (orderType === "disband") {
@@ -436,7 +515,7 @@ const handleCoastSelect = async (coastCode) => {
 
     const handleResolvePhase = async () => {
         if (
-            resolving ||
+            resolving || adjustmentSaving ||
             game?.status !== "active" ||
             game?.current_phase?.status !== "open" ||
             game.creator !== user?.username
@@ -465,6 +544,7 @@ const handleCoastSelect = async (coastCode) => {
             await api.post(`orders/games/${gameId}/${endpoint}/`);
 
             setOrders([]);
+            setAdjustmentStatus(null);
             setSelectedUnit(null);
             setMapTarget("");
             setDraftOrderType(null);
@@ -543,7 +623,11 @@ const handleCoastSelect = async (coastCode) => {
     ) ?? [];
     const orderableUnits = isRetreat
         ? myUnits.filter((unit) => unit.is_dislodged)
-        : myUnits;
+        : isAdjustment
+            ? myUnits.filter((unit) => !unit.is_dislodged && adjustmentStatus?.disbands_remaining > 0 && !orders.some((order) => order.saved_unit_id === unit.id))
+            : myUnits;
+    const buildableCenters = isAdjustment && adjustmentStatus?.builds_remaining > 0
+        ? adjustmentStatus.buildable_home_centers : [];
 
 
     console.log(
@@ -709,7 +793,7 @@ const handleCoastSelect = async (coastCode) => {
                                 <button
                                     type="button"
                                     onClick={handleResolvePhase}
-                                    disabled={resolving}
+                                    disabled={resolving || adjustmentSaving}
                                 >
                                     {resolving
                                         ? "Vyhodnocuji..."
@@ -741,6 +825,36 @@ const handleCoastSelect = async (coastCode) => {
                                 <p>Nemáš žádné jednotky.</p>
                             )}
 
+
+                            {isAdjustment && (
+                                <section>
+                                    <h3>Zimní úpravy</h3>
+                                    {ordersLoading && <p>Načítání zimních úprav...</p>}
+                                    {adjustmentStatus && <>
+                                        <p>Supply centra: {adjustmentStatus.supply_center_count} — Jednotky: {adjustmentStatus.unit_count}</p>
+                                        {adjustmentStatus.delta > 0 && <>
+                                            <p>Můžeš postavit až {adjustmentStatus.build_count} jednotek. Zbývá: {adjustmentStatus.builds_remaining}. Stavby jsou nepovinné.</p>
+                                            <p>Vyber zvýrazněné domácí centrum na mapě nebo níže.</p>
+                                            {buildableCenters.map((center) => <button type="button" key={center.code} disabled={adjustmentSaving} onClick={() => handleMapProvinceClick(center.code)}>{center.name} ({center.code})</button>)}
+                                            {buildableCenters.length === 0 && <p>Žádné další volné domácí centrum pro stavbu.</p>}
+                                        </>}
+                                        {adjustmentStatus.delta < 0 && <>
+                                            <p>Musíš rozpustit {adjustmentStatus.disband_count} jednotek. Zbývá zadat: {adjustmentStatus.disbands_remaining}.</p>
+                                            <p>Vyber vlastní jednotku na mapě a zvol D.</p>
+                                        </>}
+                                        {adjustmentStatus.delta === 0 && <p>Nemáš žádné zimní úpravy.</p>}
+                                    </>}
+                                    <h4>Uložené zimní rozkazy</h4>
+                                    <ul>{orders.map((order) => {
+                                        const unit = game.units.find((item) => item.id === order.saved_unit_id);
+                                        const label = order.order_type === "build"
+                                            ? `BUILD ${order.unit_type === "army" ? "A" : "F"} ${order.province_code}${order.saved_coast_code ? ` (${order.saved_coast_code.toUpperCase()})` : ""}`
+                                            : `DISBAND ${unit?.unit_type === "army" ? "A" : "F"} ${unit?.province_code ?? "?"}`;
+                                        return <li key={order.id}>{label}{" "}<button type="button" disabled={adjustmentSaving || resolving} onClick={() => handleCancelAdjustment(order.id)}>Zrušit</button></li>;
+                                    })}</ul>
+                                    <p>Pro změnu uložený rozkaz zruš a zadej nový.</p>
+                                </section>
+                            )}
 
                             {isRetreat && (
                                 <section>
@@ -779,6 +893,8 @@ const handleCoastSelect = async (coastCode) => {
                             )}
 
                             <GameMap
+                                onBuildTypeSelect={handleBuild}
+                                buildableCenters={buildableCenters}
                                 phaseType={game.current_phase.phase_type}
                                 units={game.units}
                                 myUnits={orderableUnits}
@@ -795,6 +911,7 @@ const handleCoastSelect = async (coastCode) => {
                                 coastSelection={coastSelection}
 
                                 onSelectUnit={(unit) => {
+                                    if (isAdjustment && adjustmentSaving) return;
                                     setSelectedUnit(unit);
 
                                     setSupportedUnit(null);

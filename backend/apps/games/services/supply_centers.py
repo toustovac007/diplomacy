@@ -68,3 +68,13 @@ def get_supply_center_count(player):
         game=player.game,
         owner=player,
     ).count()
+
+
+def get_adjustment_delta(player):
+    """Owned centers minus active units: positive builds, negative disbands."""
+    units = Unit.objects.filter(
+        game=player.game,
+        owner=player,
+        is_dislodged=False,
+    ).count()
+    return get_supply_center_count(player) - units
