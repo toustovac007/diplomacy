@@ -648,6 +648,11 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 class RetreatOrderSerializer(serializers.ModelSerializer):
+    saved_unit_id = serializers.IntegerField(source="unit.id", read_only=True)
+    target_coast = serializers.CharField(
+        source="target_coast.code", read_only=True, allow_null=True,
+    )
+
     unit_id = serializers.IntegerField(
         write_only=True
     )
@@ -683,6 +688,8 @@ class RetreatOrderSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "unit_id",
+            "saved_unit_id",
+            "target_coast",
             "order_type",
             "origin",
             "target",

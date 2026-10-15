@@ -65,6 +65,8 @@ class GamePhaseSerializer(serializers.ModelSerializer):
 
 
 class UnitSerializer(serializers.ModelSerializer):
+    is_dislodged = serializers.BooleanField(read_only=True)
+
     owner_username = serializers.CharField(
         source="owner.user.username",
         read_only=True,
@@ -115,6 +117,7 @@ class UnitSerializer(serializers.ModelSerializer):
             "country_name",
             "unit_type",
             "unit_type_name",
+            "is_dislodged",
             "province",
             "province_name",
             "province_code",

@@ -10,6 +10,8 @@ import OrderPanel from "../components/game/OrderPanel";
 import {
     getOrders,
     submitOrder,
+    getRetreatOrders,
+    submitRetreatOrder,
 } from "../services/orders";
 
 import GameMap from "../components/game/GameMap";
@@ -40,7 +42,9 @@ function GameDetail() {
     const { user } = useAuth();
 
     const [game, setGame] = useState(null);
+    const isRetreat = game?.current_phase?.phase_type === "retreat";
     const [loading, setLoading] = useState(true);
+    const [resolving, setResolving] = useState(false);
 
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
@@ -73,7 +77,7 @@ function GameDetail() {
         try {
             setOrdersLoading(true);
 
-            const data = await getOrders(
+            const data = await (isRetreat ? getRetreatOrders : getOrders)(
                 gameId
             );
 
@@ -83,6 +87,7 @@ function GameDetail() {
             setOrders(data);
 
         } catch (error) {
+            setMapOrderError("Nepodařilo se načíst rozkazy.");
             console.error(
                 "Nepodařilo se načíst rozkazy:",
                 error
@@ -108,7 +113,7 @@ function GameDetail() {
         useEffect(() => {
             if (
                 game?.status === "active" &&
-                game?.current_phase?.phase_type === "movement"
+                ["movement", "retreat"].includes(game?.current_phase?.phase_type)
             ) {
                 loadOrders();
             }
@@ -116,6 +121,7 @@ function GameDetail() {
             gameId,
             game?.status,
             game?.current_phase?.id,
+            game?.current_phase?.phase_type,
         ]);
 
 
@@ -125,7 +131,7 @@ function GameDetail() {
         setMapOrderMessage("");
 
         try {
-            await submitOrder(
+            await (isRetreat ? submitRetreatOrder : submitOrder)(
                 gameId,
                 data
             );
@@ -155,7 +161,7 @@ function GameDetail() {
                 setMapOrderError(
                     typeof backendData === "string"
                         ? backendData
-                        : JSON.stringify(backendData)
+                        : Object.values(backendData).flat().join(" ")
                 );
             } else {
                 setMapOrderError(
@@ -178,8 +184,9 @@ function GameDetail() {
         setMapOrderError("");
 
         // MOVE
-if (draftOrderType === "move") {
+if (draftOrderType === "move" || draftOrderType === "retreat") {
     setMapTarget(provinceCode);
+    setCoastSelection(null);
 
     const coastOptions =
         MULTI_COASTS[provinceCode];
@@ -189,7 +196,7 @@ if (draftOrderType === "move") {
         coastOptions
     ) {
         setCoastSelection({
-            mode: "move",
+            mode: draftOrderType,
             provinceCode,
             options: coastOptions,
         });
@@ -199,7 +206,7 @@ if (draftOrderType === "move") {
 
     await saveMapOrder({
         unit_id: selectedUnit.id,
-        order_type: "move",
+        order_type: draftOrderType,
         target: provinceCode,
     });
 
@@ -283,10 +290,10 @@ const handleCoastSelect = async (coastCode) => {
         provinceCode,
     } = coastSelection;
 
-    if (mode === "move") {
+    if (mode === "move" || mode === "retreat") {
         await saveMapOrder({
             unit_id: selectedUnit.id,
-            order_type: "move",
+            order_type: mode,
             target: provinceCode,
             target_coast_code:
                 coastCode,
@@ -326,6 +333,15 @@ const handleCoastSelect = async (coastCode) => {
         setSupportedUnit(null);
         setCoastSelection(null);
 
+        if (isRetreat) {
+            if (!selectedUnit.is_dislodged) return;
+            if (orderType === "disband") {
+                await saveMapOrder({ unit_id: selectedUnit.id, order_type: "disband" });
+            } else if (orderType === "retreat") {
+                setDraftOrderType("retreat");
+            }
+            return;
+        }
 
         if (orderType === "hold") {
             await saveMapOrder({
@@ -418,6 +434,58 @@ const handleCoastSelect = async (coastCode) => {
 
 
 
+    const handleResolvePhase = async () => {
+        if (
+            resolving ||
+            game?.status !== "active" ||
+            game?.current_phase?.status !== "open" ||
+            game.creator !== user?.username
+        ) {
+            return;
+        }
+
+        const endpoints = {
+            movement: "resolve",
+            retreat: "resolve-retreat",
+            adjustment: "resolve-adjustment",
+        };
+        const endpoint = endpoints[game.current_phase.phase_type];
+
+        setError("");
+        setMessage("");
+
+        if (!endpoint) {
+            setError("Tento typ fáze nelze ručně vyhodnotit.");
+            return;
+        }
+
+        setResolving(true);
+
+        try {
+            await api.post(`orders/games/${gameId}/${endpoint}/`);
+
+            setOrders([]);
+            setSelectedUnit(null);
+            setMapTarget("");
+            setDraftOrderType(null);
+            setSupportedUnit(null);
+            setCoastSelection(null);
+            setMapOrderError("");
+            setMapOrderMessage("");
+
+            await loadGame();
+            setMessage("Fáze byla vyhodnocena.");
+        } catch (error) {
+            setError(
+                error.response?.data?.detail ||
+                "Fázi se nepodařilo vyhodnotit."
+            );
+        } finally {
+            setResolving(false);
+        }
+    };
+
+
     const handleStartGame = async () => {
         setError("");
         setMessage("");
@@ -473,6 +541,9 @@ const handleCoastSelect = async (coastCode) => {
     const myUnits = game.units?.filter(
         (unit) => unit.owner_username === user?.username
     ) ?? [];
+    const orderableUnits = isRetreat
+        ? myUnits.filter((unit) => unit.is_dislodged)
+        : myUnits;
 
 
     console.log(
@@ -634,6 +705,18 @@ const handleCoastSelect = async (coastCode) => {
                                 </strong>
                             </p>
 
+                            {isCreator && game.current_phase.status === "open" && (
+                                <button
+                                    type="button"
+                                    onClick={handleResolvePhase}
+                                    disabled={resolving}
+                                >
+                                    {resolving
+                                        ? "Vyhodnocuji..."
+                                        : "Vyhodnotit fázi nyní"}
+                                </button>
+                            )}
+
                             <h3>Moje jednotky</h3>
 
                             {myUnits.length > 0 ? (
@@ -659,9 +742,46 @@ const handleCoastSelect = async (coastCode) => {
                             )}
 
 
+                            {isRetreat && (
+                                <section>
+                                    <h3>Ústupy vytlačených jednotek</h3>
+                                    <p>Vyber jednotku na mapě nebo níže. R = ústup, D = rozpuštění.
+                                        Jednotka bez rozkazu bude při vyhodnocení automaticky rozpuštěna.</p>
+                                    {ordersLoading && <p>Načítání rozkazů...</p>}
+                                    {orderableUnits.length === 0 && <p>Nemáš žádné vytlačené jednotky.</p>}
+                                    <ul>
+                                        {orderableUnits.map((unit) => {
+                                            const order = orders.find((item) => item.saved_unit_id === unit.id);
+                                            return (
+                                                <li key={unit.id}>
+                                                    <button type="button" onClick={() => {
+                                                        setSelectedUnit(unit);
+                                                        setDraftOrderType(null);
+                                                        setMapTarget("");
+                                                        setSupportedUnit(null);
+                                                        setCoastSelection(null);
+                                                        setMapOrderError("");
+                                                        setMapOrderMessage("");
+                                                    }}>
+                                                        {unit.unit_type === "army" ? "A" : "F"} {unit.province_name}
+                                                        {unit.coast && ` (${unit.coast.toUpperCase()})`}
+                                                    </button>
+                                                    {" — "}{order
+                                                        ? order.order_type === "disband"
+                                                            ? "Uloženo: DISBAND"
+                                                            : `Uloženo: RETREAT → ${order.target_code}${order.target_coast ? ` (${order.target_coast.toUpperCase()})` : ""}`
+                                                        : "Čeká na rozhodnutí"}
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </section>
+                            )}
+
                             <GameMap
+                                phaseType={game.current_phase.phase_type}
                                 units={game.units}
-                                myUnits={myUnits}
+                                myUnits={orderableUnits}
                                 orders={orders}
                                 supplyCenters={
                                     game.supply_centers ?? []
@@ -704,7 +824,7 @@ const handleCoastSelect = async (coastCode) => {
                             />
 
 
-                            {draftOrderType === "move" && (
+                            {(draftOrderType === "move" || draftOrderType === "retreat") && (
                                 <p>
                                     Klikni na cílovou provincii.
                                 </p>

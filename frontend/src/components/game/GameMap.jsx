@@ -226,6 +226,7 @@ function drawHold(layer, position) {
 }
 
 function GameMap({
+    phaseType = "movement",
     units = [],
     myUnits = [],
     orders = [],
@@ -260,6 +261,10 @@ function GameMap({
 
         for (const unit of units) {
             if (unit.province_code) {
+                const existing = result.get(unit.province_code.toUpperCase());
+                if (phaseType === "retreat" && existing?.is_dislodged && myUnitIds.has(existing.id)) {
+                    continue;
+                }
                 result.set(
                     unit.province_code.toUpperCase(),
                     unit
@@ -268,7 +273,7 @@ function GameMap({
         }
 
         return result;
-    }, [units]);
+    }, [units, phaseType, myUnitIds]);
 
     const ordersByUnitId = useMemo(() => {
         const result = new Map();
@@ -546,6 +551,13 @@ function GameMap({
 
         uiLayer.appendChild(orderLayer);
 
+        const positionForUnit = (unit) => {
+            const position = unitPositions[unit?.province_code?.toUpperCase()];
+            return position && phaseType === "retreat" && unit.is_dislodged
+                ? { x: position.x + 30, y: position.y + 30 }
+                : position;
+        };
+
         /*
          * Draw saved orders first so unit markers and the wheel remain
          * visually above them.
@@ -554,8 +566,9 @@ function GameMap({
             const originCode =
                 order.origin?.toUpperCase();
 
-            const origin =
-                unitPositions[originCode];
+            const origin = order.order_type === "retreat"
+                ? positionForUnit(units.find((unit) => unit.id === order.saved_unit_id))
+                : unitPositions[originCode];
 
             if (!origin) {
                 continue;
@@ -570,7 +583,7 @@ function GameMap({
                 continue;
             }
 
-            if (order.order_type === "move") {
+            if (order.order_type === "move" || order.order_type === "retreat") {
                 const targetCode =
                     order.target_code
                         ?.toUpperCase();
@@ -672,10 +685,7 @@ function GameMap({
                 unit.province_code
                     ?.toUpperCase();
 
-            const position =
-                unitPositions[
-                    provinceCode
-                ];
+            const position = positionForUnit(unit);
 
             if (
                 !provinceCode ||
@@ -752,6 +762,25 @@ function GameMap({
             }
 
             group.appendChild(circle);
+
+            if (phaseType === "retreat" && unit.is_dislodged) {
+                circle.setAttribute("stroke-dasharray", "5 4");
+                const title = createSvgElement("title");
+                title.textContent = "Vytlačená jednotka — vyžaduje ústup nebo rozpuštění";
+                group.appendChild(title);
+                if (myUnitIds.has(unit.id)) {
+                    group.setAttribute("pointer-events", "all");
+                    group.style.cursor = "pointer";
+                    group.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        if (draftOrderType) {
+                            onProvinceClick?.(provinceCode, unit);
+                        } else {
+                            onSelectUnit?.(unit);
+                        }
+                    });
+                }
+            }
 
             if (
                 selectedUnit?.id ===
@@ -858,12 +887,7 @@ function GameMap({
                 selectedUnit.id
             )
         ) {
-            const selectedPosition =
-                unitPositions[
-                    selectedUnit
-                        .province_code
-                        ?.toUpperCase()
-                ];
+            const selectedPosition = positionForUnit(selectedUnit);
 
             if (selectedPosition) {
                 const wheel =
@@ -892,7 +916,12 @@ function GameMap({
                     selectedUnit.unit_type ===
                     "fleet";
 
-                const options = isFleet
+                const options = phaseType === "retreat"
+                    ? [
+                        { type: "retreat", label: "R", title: "RETREAT – ústup", angle: -90 },
+                        { type: "disband", label: "D", title: "DISBAND – rozpuštění", angle: 90 },
+                    ]
+                    : isFleet
                     ? [
                         {
                             type: "hold",
@@ -1622,6 +1651,7 @@ if (coastSelection) {
             uiLayer.remove();
         };
     }, [
+        phaseType,
         svgMarkup,
         unitPositions,
         units,
