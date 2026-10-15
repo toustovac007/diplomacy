@@ -15,6 +15,7 @@ class Order(models.Model):
         ("hold", "Držet pozici"),
         ("move", "Pohyb"),
         ("support", "Podpora"),
+        ("convoy", "Konvoj"),
         ("retreat", "Ústup"),
         ("disband", "Rozpuštění"),
     ]
@@ -57,6 +58,20 @@ class Order(models.Model):
     )
 
     # MOVE
+    via_convoy = models.BooleanField(default=False)
+
+    # CONVOY: distinct from SUPPORT, with an immutable origin snapshot.
+    convoyed_unit = models.ForeignKey(
+        Unit, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="convoy_orders",
+    )
+    convoyed_origin_province = models.ForeignKey(
+        Province, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+    )
+    convoy_target_province = models.ForeignKey(
+        Province, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+    )
+
     target_province = models.ForeignKey(
         Province,
         on_delete=models.PROTECT,

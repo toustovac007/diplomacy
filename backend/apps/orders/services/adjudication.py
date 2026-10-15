@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from apps.games.models import GamePhase, Unit
 from apps.orders.models import Order
+from apps.orders.services.convoys import ConvoyRoutes
 
 from apps.games.services.phase_manager import (
     create_next_after_movement,
@@ -13,84 +14,12 @@ class AdjudicationError(Exception):
     pass
 
 
-@transaction.atomic
-def resolve_movement_phase(phase):
-    phase = (
-        GamePhase.objects
-        .select_for_update()
-        .select_related("game")
-        .get(pk=phase.pk)
-    )
-
-    if phase.status != "open":
-        raise AdjudicationError(
-            "Tato fáze už byla vyhodnocena."
-        )
-
-    if phase.phase_type != "movement":
-        raise AdjudicationError(
-            "Tento resolver umí pouze Movement fázi."
-        )
-
-    game = phase.game
-
-    units = list(
-        Unit.objects
-        .select_for_update()
-        .filter(
-            game=game,
-            is_dislodged=False,
-        )
-        .select_related(
-            "owner",
-            "province",
-            "coast",
-        )
-    )
-
-    # =========================================
-    # 1. AUTOMATICKÉ HOLD
-    # =========================================
-
-    existing_orders = {
-        order.unit_id: order
-        for order in Order.objects.filter(
-            phase=phase
-        )
-    }
-
-    for unit in units:
-        if unit.id not in existing_orders:
-            Order.objects.create(
-                phase=phase,
-                unit=unit,
-                order_type="hold",
-                origin_province=unit.province,
-                origin_coast=unit.coast,
-                result="pending",
-                result_reason="",
-                is_default=True,
-            )
-
-    orders = list(
-        Order.objects
-        .select_for_update()
-        .filter(phase=phase)
-        .select_related(
-            "unit",
-            "unit__owner",
-            "origin_province",
-            "origin_coast",
-            "target_province",
-            "target_coast",
-            "supported_unit",
-            "supported_unit__owner",
-            "supported_origin_province",
-            "support_target_province",
-            "support_target_coast",
-        )
-    )
-
+def _evaluate_battles(units, orders, active_convoys):
+    """Evaluate in memory; only the final convoy-consistent result is persisted."""
+    orders = sorted(orders, key=lambda order: order.origin_province.code)
+    for order in orders:
+        order.result = "pending"
+        order.result_reason = ""
     orders_by_unit = {
         order.unit_id: order
         for order in orders
@@ -105,6 +34,7 @@ def resolve_movement_phase(phase):
         order
         for order in orders
         if order.order_type == "move"
+        and (not order.via_convoy or order.id in active_convoys)
     ]
 
     support_orders = [
@@ -135,7 +65,7 @@ def resolve_movement_phase(phase):
         )
 
         if is_support_hold:
-            if supported_order.order_type != "hold":
+            if supported_order.order_type not in {"hold", "convoy"}:
                 support.result = "failed"
                 support.result_reason = "void_support"
                 continue
@@ -237,7 +167,7 @@ def resolve_movement_phase(phase):
 
         if (
             unit_order
-            and unit_order.order_type == "hold"
+            and unit_order.order_type in {"hold", "convoy"}
         ):
             for support in uncut_supports:
                 if (
@@ -343,7 +273,9 @@ def resolve_movement_phase(phase):
 
         if (
             occupant_order
-            and occupant_order.order_type == "move"
+            and occupant_order.id in attack_strength
+            and not order.via_convoy
+            and not occupant_order.via_convoy
             and
             occupant_order.target_province_id
             == order.origin_province_id
@@ -390,7 +322,7 @@ def resolve_movement_phase(phase):
 
         if (
             occupant_order
-            and occupant_order.order_type == "move"
+            and occupant_order.id in attack_strength
         ):
             if resolve_move(
                 occupant_order
@@ -484,6 +416,153 @@ def resolve_movement_phase(phase):
             support.result_reason = (
                 "dislodged"
             )
+
+    return successful_moves, dislodged_by
+
+
+def _resolve_convoys(units, orders):
+    if not any(order.via_convoy or order.order_type == "convoy" for order in orders):
+        return _evaluate_battles(units, orders, set())
+    routes = ConvoyRoutes(orders)
+    moves = {o.id: o for o in orders if o.order_type == "move" and o.via_convoy}
+    candidates = {key for key, move in moves.items() if routes.exists(move)}
+    paradoxes = set()
+
+    def follow(initial, eligible):
+        # Test both pessimistic and optimistic assumptions. A support-cut paradox
+        # can have TWO fixed points, so convergence from only one side is unsafe.
+        state = frozenset(initial)
+        history = []
+        for _ in range(2 * len(eligible) + 2):
+            if state in history:
+                cycle = history[history.index(state):]
+                return state, set.union(*map(set, cycle)) - set.intersection(*map(set, cycle))
+            history.append(state)
+            _, dislodged = _evaluate_battles(units, orders, state)
+            next_state = frozenset(key for key in eligible if routes.exists(moves[key], dislodged))
+            if next_state == state:
+                return state, set()
+            state = next_state
+        # Bounded conservative Szykman-style fallback for long dependency cycles:
+        # fail unsettled transports, then reevaluate the remaining orders.
+        return state, set.union(*map(set, history)) - set.intersection(*map(set, history))
+
+    # Every retry permanently removes at least one eligible transport, bounding
+    # the outer loop by the number of convoyed moves regardless of input order.
+    while True:
+        eligible = candidates - paradoxes
+        low, low_cycle = follow(set(), eligible)
+        high, high_cycle = follow(eligible, eligible)
+        uncertain = low_cycle | high_cycle | (low ^ high)
+        if not uncertain:
+            active = set(low)
+            break
+        paradoxes.update(uncertain)
+
+    successful_moves, dislodged = _evaluate_battles(units, orders, active)
+    for key, move in moves.items():
+        if key not in active:
+            move.result = "failed"
+            move.result_reason = (
+                "convoy_paradox" if key in paradoxes else
+                "convoy_disrupted" if key in candidates else "no_convoy_route"
+            )
+    by_unit = {o.unit_id: o for o in orders}
+    for fleet in routes.fleets:
+        move = by_unit.get(fleet.convoyed_unit_id)
+        fleet.result = "failed"
+        if fleet.unit_id in dislodged:
+            fleet.result_reason = "convoy_disrupted"
+        elif move is None or move.id not in moves or fleet not in routes.matching(move):
+            fleet.result_reason = "convoy_order_mismatch"
+        elif move.id not in active:
+            fleet.result_reason = move.result_reason
+        else:
+            fleet.result = "success"
+            fleet.result_reason = "convoy"
+    return successful_moves, dislodged
+
+
+@transaction.atomic
+def resolve_movement_phase(phase):
+    phase = (
+        GamePhase.objects
+        .select_for_update()
+        .select_related("game")
+        .get(pk=phase.pk)
+    )
+
+    if phase.status != "open":
+        raise AdjudicationError(
+            "Tato fáze už byla vyhodnocena."
+        )
+
+    if phase.phase_type != "movement":
+        raise AdjudicationError(
+            "Tento resolver umí pouze Movement fázi."
+        )
+
+    game = phase.game
+
+    units = list(
+        Unit.objects
+        .select_for_update()
+        .filter(
+            game=game,
+            is_dislodged=False,
+        )
+        .select_related(
+            "owner",
+            "province",
+            "coast",
+        )
+    )
+
+    # =========================================
+    # 1. AUTOMATICKÉ HOLD
+    # =========================================
+
+    existing_orders = {
+        order.unit_id: order
+        for order in Order.objects.filter(
+            phase=phase
+        )
+    }
+
+    for unit in units:
+        if unit.id not in existing_orders:
+            Order.objects.create(
+                phase=phase,
+                unit=unit,
+                order_type="hold",
+                origin_province=unit.province,
+                origin_coast=unit.coast,
+                result="pending",
+                result_reason="",
+                is_default=True,
+            )
+
+    orders = list(
+        Order.objects
+        .select_for_update()
+        .filter(phase=phase)
+        .select_related(
+            "unit",
+            "unit__owner",
+            "unit__province",
+            "origin_province",
+            "origin_coast",
+            "target_province",
+            "target_coast",
+            "supported_unit",
+            "supported_unit__owner",
+            "supported_origin_province",
+            "support_target_province",
+            "support_target_coast",
+        )
+    )
+
+    successful_moves, dislodged_by = _resolve_convoys(units, orders)
 
     Order.objects.bulk_update(
         orders,

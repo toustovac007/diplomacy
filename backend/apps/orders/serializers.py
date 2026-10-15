@@ -8,6 +8,7 @@ from apps.maps.rules import (
 )
 
 from .models import Order
+from .services.convoys import can_army_convoy
 
 from .services.retreat import (
     can_unit_retreat,
@@ -27,6 +28,15 @@ from apps.orders.services.adjustments import (
 )
 
 class OrderSerializer(serializers.ModelSerializer):
+    via_convoy = serializers.BooleanField(default=False)
+    convoyed_unit_id = serializers.IntegerField(required=False, allow_null=True)
+    convoy_target = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    convoyed_origin = serializers.CharField(
+        source="convoyed_origin_province.code", read_only=True, allow_null=True,
+    )
+    convoy_target_code = serializers.CharField(
+        source="convoy_target_province.code", read_only=True, allow_null=True,
+    )
     unit_id = serializers.IntegerField(
         write_only=True
     )
@@ -133,6 +143,8 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
 
         fields = (
+            "via_convoy", "convoyed_unit_id", "convoy_target",
+            "convoyed_origin", "convoy_target_code",
             "id",
             "unit_id",
             "saved_unit_id",
@@ -221,6 +233,13 @@ class OrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Tato fáze už není otevřená."
             )
+
+        if attrs.get("via_convoy") and order_type != "move":
+            raise serializers.ValidationError({"via_convoy": "VIA CONVOY lze použít pouze pro MOVE."})
+        if order_type != "convoy" and (attrs.get("convoyed_unit_id") or attrs.get("convoy_target")):
+            raise serializers.ValidationError({"convoy_target": "Konvojové údaje patří pouze k rozkazu CONVOY."})
+        attrs["_convoyed_unit"] = None
+        attrs["_convoy_target_province"] = None
 
         # Výchozí hodnoty pro create()
         attrs["_unit"] = unit
@@ -327,11 +346,12 @@ class OrderSerializer(serializers.ModelSerializer):
                         }
                     )
 
-            if not can_unit_move(
-                unit,
-                target_province,
-                target_coast,
-            ):
+            move_allowed = (
+                can_army_convoy(unit, target_province, target_coast)
+                if attrs.get("via_convoy")
+                else can_unit_move(unit, target_province, target_coast)
+            )
+            if not move_allowed:
                 raise serializers.ValidationError(
                     {
                         "target":
@@ -464,10 +484,10 @@ class OrderSerializer(serializers.ModelSerializer):
 
                 # Podporovaný pohyb musí být
                 # sám o sobě legální.
-                if not can_unit_move(
-                    supported_unit,
-                    support_target_province,
-                    support_target_coast,
+                # A convoy route may be submitted later by another player.
+                if not (
+                    can_unit_move(supported_unit, support_target_province, support_target_coast)
+                    or can_army_convoy(supported_unit, support_target_province, support_target_coast)
                 ):
                     raise serializers.ValidationError(
                         {
@@ -517,6 +537,28 @@ class OrderSerializer(serializers.ModelSerializer):
 
             return attrs
 
+        if order_type == "convoy":
+            if unit.unit_type != "fleet" or unit.province.province_type != "sea":
+                raise serializers.ValidationError({"order_type": "CONVOY může vydat pouze flotila na moři."})
+            if any((target_code, target_coast_code, supported_unit_id,
+                    support_target_code, support_target_coast_code)):
+                raise serializers.ValidationError("Pro CONVOY použij convoyed_unit_id a convoy_target.")
+            try:
+                army = Unit.objects.select_related("province").get(
+                    id=attrs.get("convoyed_unit_id"), game=game, is_dislodged=False,
+                )
+            except Unit.DoesNotExist:
+                raise serializers.ValidationError({"convoyed_unit_id": "Konvojovaná jednotka v této hře neexistuje."})
+            try:
+                destination = Province.objects.get(code=attrs.get("convoy_target", "").upper())
+            except Province.DoesNotExist:
+                raise serializers.ValidationError({"convoy_target": "Cílová provincie neexistuje."})
+            if not can_army_convoy(army, destination):
+                raise serializers.ValidationError({"convoy_target": "Konvoj musí přepravovat armádu mezi dvěma různými pobřežními provinciemi."})
+            attrs["_convoyed_unit"] = army
+            attrs["_convoy_target_province"] = destination
+            return attrs
+
         raise serializers.ValidationError(
             {
                 "order_type":
@@ -525,6 +567,8 @@ class OrderSerializer(serializers.ModelSerializer):
         )
 
     def create(self, validated_data):
+        convoyed_unit = validated_data.pop("_convoyed_unit")
+        convoy_target = validated_data.pop("_convoy_target_province")
         unit = validated_data.pop(
             "_unit"
         )
@@ -602,6 +646,10 @@ class OrderSerializer(serializers.ModelSerializer):
                 phase=phase,
                 unit=unit,
                 defaults={
+                    "via_convoy": validated_data.get("via_convoy", False),
+                    "convoyed_unit": convoyed_unit,
+                    "convoyed_origin_province": convoyed_unit.province if convoyed_unit else None,
+                    "convoy_target_province": convoy_target,
                     "order_type":
                         validated_data["order_type"],
 
