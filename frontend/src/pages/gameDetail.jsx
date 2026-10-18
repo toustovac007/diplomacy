@@ -31,6 +31,7 @@ function GameDetail() {
 
     const [draftOrderType, setDraftOrderType] = useState(null);
     const [supportedUnit, setSupportedUnit] = useState(null);
+    const [convoyedUnit, setConvoyedUnit] = useState(null);
     const [coastSelection, setCoastSelection] = useState(null);
 
     const [mapOrderMessage, setMapOrderMessage] =
@@ -63,6 +64,14 @@ function GameDetail() {
         try {
             const response = await api.get(`games/${gameId}/`);
 
+            if (game?.current_phase?.id !== response.data.current_phase?.id) {
+                setSelectedUnit(null);
+                setDraftOrderType(null);
+                setSupportedUnit(null);
+                setConvoyedUnit(null);
+                setMapTarget("");
+                setCoastSelection(null);
+            }
             setGame(response.data);
         } catch (error) {
             console.error(error);
@@ -115,6 +124,12 @@ function GameDetail() {
 
 
         const handleOrderSaved = async () => {
+            setConvoyedUnit(null);
+            setSupportedUnit(null);
+            setSelectedUnit(null);
+            setDraftOrderType(null);
+            setMapTarget("");
+            setCoastSelection(null);
             await loadOrders();
         };
 
@@ -163,6 +178,7 @@ function GameDetail() {
             setDraftOrderType(null);
             setMapTarget("");
             setSupportedUnit(null);
+            setConvoyedUnit(null);
             setCoastSelection(null);
 
             // Po úspěšném uložení výběr zavřeme.
@@ -208,6 +224,7 @@ function GameDetail() {
             setSelectedUnit(null);
             setMapTarget("");
             setDraftOrderType(null);
+            setConvoyedUnit(null);
             setCoastSelection(null);
             await loadOrders();
             setMapOrderMessage("Rozkaz byl zrušen. Můžeš zadat nový.");
@@ -239,6 +256,7 @@ function GameDetail() {
             setMapTarget(provinceCode);
             setSelectedUnit(null);
             setDraftOrderType(null);
+            setConvoyedUnit(null);
             setCoastSelection(null);
             setMapOrderError("");
             return;
@@ -248,6 +266,30 @@ function GameDetail() {
         }
 
         setMapOrderError("");
+
+        if (game.current_phase.phase_type === "movement") {
+            if (draftOrderType === "move-convoy") {
+                setMapTarget(provinceCode);
+                await saveMapOrder({ unit_id: selectedUnit.id, order_type: "move",
+                    target: provinceCode, via_convoy: true });
+                return;
+            }
+            if (draftOrderType === "convoy-unit") {
+                if (!clickedUnit || clickedUnit.unit_type !== "army") {
+                    setMapOrderError("Pro CONVOY klikni na armádu, kterou chceš konvojovat.");
+                    return;
+                }
+                setConvoyedUnit(clickedUnit);
+                setDraftOrderType("convoy-target");
+                return;
+            }
+            if (draftOrderType === "convoy-target" && convoyedUnit) {
+                setMapTarget(provinceCode);
+                await saveMapOrder({ unit_id: selectedUnit.id, order_type: "convoy",
+                    convoyed_unit_id: convoyedUnit.id, convoy_target: provinceCode });
+                return;
+            }
+        }
 
         // MOVE
 if (draftOrderType === "move" || draftOrderType === "retreat") {
@@ -404,6 +446,7 @@ const handleCoastSelect = async (coastCode) => {
         setMapOrderMessage("");
         setMapTarget("");
         setSupportedUnit(null);
+        setConvoyedUnit(null);
         setCoastSelection(null);
 
         if (isAdjustment) {
@@ -419,6 +462,16 @@ const handleCoastSelect = async (coastCode) => {
             } else if (orderType === "retreat") {
                 setDraftOrderType("retreat");
             }
+            return;
+        }
+
+        if (game.current_phase.phase_type !== "movement") return;
+        if (orderType === "move-convoy" && selectedUnit.unit_type === "army" && selectedUnit.province_type === "coastal") {
+            setDraftOrderType("move-convoy");
+            return;
+        }
+        if (orderType === "convoy" && selectedUnit.unit_type === "fleet" && selectedUnit.province_type === "sea") {
+            setDraftOrderType("convoy-unit");
             return;
         }
 
@@ -549,6 +602,7 @@ const handleCoastSelect = async (coastCode) => {
             setMapTarget("");
             setDraftOrderType(null);
             setSupportedUnit(null);
+            setConvoyedUnit(null);
             setCoastSelection(null);
             setMapOrderError("");
             setMapOrderMessage("");
@@ -743,6 +797,20 @@ const handleCoastSelect = async (coastCode) => {
                 </>
             )}
 
+            {game.status === "finished" && (
+                <section>
+                    <h2>Hra skončila</h2>
+                    {game.winner ? <>
+                        <p>Vítěz: <strong>{game.winner.country_name} ({game.winner.country})</strong></p>
+                        <p>Hráč: {game.winner.username}</p>
+                        <p>Supply centra: {game.winner_supply_center_count}</p>
+                    </> : <p>Údaj o vítězi není k dispozici.</p>}
+                    {game.finished_at && <p>Ukončeno: {new Date(game.finished_at).toLocaleString("cs-CZ")}</p>}
+                    <GameMap phaseType="finished" units={game.units ?? []}
+                        supplyCenters={game.supply_centers ?? []} />
+                </section>
+            )}
+
             {game.status === "active" && (
                 <>
                     <hr />
@@ -873,6 +941,7 @@ const handleCoastSelect = async (coastCode) => {
                                                         setDraftOrderType(null);
                                                         setMapTarget("");
                                                         setSupportedUnit(null);
+                                                        setConvoyedUnit(null);
                                                         setCoastSelection(null);
                                                         setMapOrderError("");
                                                         setMapOrderMessage("");
@@ -905,6 +974,7 @@ const handleCoastSelect = async (coastCode) => {
 
                                 selectedUnit={selectedUnit}
                                 supportedUnit={supportedUnit}
+                                convoyedUnit={convoyedUnit}
                                 selectedTarget={mapTarget}
                                 draftOrderType={draftOrderType}
 
@@ -915,6 +985,8 @@ const handleCoastSelect = async (coastCode) => {
                                     setSelectedUnit(unit);
 
                                     setSupportedUnit(null);
+
+                                    setConvoyedUnit(null);
                                     setMapTarget("");
                                     setDraftOrderType(null);
                                     setCoastSelection(null);
@@ -946,6 +1018,11 @@ const handleCoastSelect = async (coastCode) => {
                                     Klikni na cílovou provincii.
                                 </p>
                             )}
+
+                            {draftOrderType === "convoy-unit" && <p>Klikni na armádu, kterou chceš konvojovat.</p>}
+                            {(draftOrderType === "convoy-target" || draftOrderType === "move-convoy") &&
+                                <p>Klikni na cílovou pobřežní provincii konvoje.</p>}
+                            {convoyedUnit && <p>Konvojovaná armáda (tyrkysové označení): {convoyedUnit.province_name} — {convoyedUnit.country_name}</p>}
 
                             {draftOrderType === "support-unit" && (
                                 <p>

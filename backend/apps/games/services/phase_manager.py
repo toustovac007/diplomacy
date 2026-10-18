@@ -2,7 +2,8 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from apps.games.models import GamePhase
+from apps.games.models import Game, GamePhase
+from apps.games.services.victory import find_solo_winner, finish_game
 
 from apps.games.services.supply_centers import (
     update_supply_center_ownership,
@@ -65,8 +66,11 @@ def create_next_after_movement(
     )
 
 
+@transaction.atomic
 def create_next_after_retreat(phase):
-    game = phase.game
+    game = Game.objects.select_for_update().get(pk=phase.game_id)
+    if game.status == "finished":
+        return None
     next_sequence = phase.sequence + 1
 
     if phase.season == "spring":
@@ -82,6 +86,11 @@ def create_next_after_retreat(phase):
         update_supply_center_ownership(
             game
         )
+
+        winner = find_solo_winner(game)
+        if winner is not None:
+            finish_game(game, winner)
+            return None
 
         if all(get_adjustment_delta(player) == 0 for player in game.players.all()):
             return create_phase(

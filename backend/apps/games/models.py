@@ -40,6 +40,21 @@ class Game(models.Model):
         auto_now_add=True,
     )
 
+    winner = models.ForeignKey(
+        "GamePlayer", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="won_games",
+    )
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.winner_id and self.winner.game_id != self.pk:
+            raise ValidationError({"winner": "Vítěz musí být hráčem této hry."})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 

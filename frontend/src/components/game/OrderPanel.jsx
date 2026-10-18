@@ -14,6 +14,10 @@ function OrderPanel({
     const [supportMode, setSupportMode] = useState("hold");
     const [supportTarget, setSupportTarget] = useState("");
 
+    const [viaConvoy, setViaConvoy] = useState(false);
+    const [convoyedUnitId, setConvoyedUnitId] = useState("");
+    const [convoyTarget, setConvoyTarget] = useState("");
+
     const [orderType, setOrderType] = useState("hold");
     const [target, setTarget] = useState("");
 
@@ -24,6 +28,9 @@ function OrderPanel({
 
 
 useEffect(() => {
+    setViaConvoy(existingOrder?.order_type === "move" && existingOrder.via_convoy === true);
+    setConvoyedUnitId(existingOrder?.convoyed_unit_id?.toString() ?? "");
+    setConvoyTarget(existingOrder?.convoy_target_code ?? "");
     if (!existingOrder) {
         setOrderType("hold");
         setTarget("");
@@ -50,7 +57,7 @@ useEffect(() => {
             existingOrder.supported_unit_id?.toString() ?? ""
         );
 
-        if (existingOrder.support_target_code) {
+        if (existingOrder.support_target_code && existingOrder.support_target_code !== existingOrder.supported_origin) {
             setSupportMode("move");
             setSupportTarget(
                 existingOrder.support_target_code
@@ -91,6 +98,16 @@ useEffect(() => {
             }
 
             data.target = cleanedTarget;
+            data.via_convoy = unit.unit_type === "army" && viaConvoy;
+        }
+
+        if (orderType === "convoy") {
+            if (!convoyedUnitId || !convoyTarget.trim()) {
+                setError("Vyber konvojovanou armádu a zadej cílovou provincii.");
+                return;
+            }
+            data.convoyed_unit_id = Number(convoyedUnitId);
+            data.convoy_target = convoyTarget.trim().toUpperCase();
         }
 
         if (orderType === "support") {
@@ -146,9 +163,6 @@ useEffect(() => {
                 "Rozkaz byl uložen."
             );
 
-            if (onOrderSaved) {
-                onOrderSaved(savedOrder);
-            }
 
         } catch (error) {
             console.error(error);
@@ -234,11 +248,25 @@ useEffect(() => {
 
                         SUPPORT
                     </label>
+                    {unit.unit_type === "fleet" && unit.province_type === "sea" && (
+                        <label>
+                            <input type="radio" name={`order-${unit.id}`} value="convoy"
+                                checked={orderType === "convoy"} onChange={() => setOrderType("convoy")} />
+                            CONVOY
+                        </label>
+                    )}
                 </div>
 
 
                 {orderType === "move" && (
                     <div>
+                        {unit.unit_type === "army" && unit.province_type === "coastal" && (
+                            <label>
+                                <input type="checkbox" checked={viaConvoy}
+                                    onChange={(event) => setViaConvoy(event.target.checked)} />
+                                Via convoy (přes konvoj)
+                            </label>
+                        )}
                         <label>
                             Cílová provincie:{" "}
 
@@ -257,6 +285,27 @@ useEffect(() => {
                     </div>
                 )}
 
+
+                {orderType === "convoy" && (
+                    <div>
+                        <label>
+                            Konvojovaná armáda:{" "}
+                            <select value={convoyedUnitId} onChange={(event) => setConvoyedUnitId(event.target.value)}>
+                                <option value="">-- vyber armádu --</option>
+                                {allUnits.filter((other) => other.unit_type === "army").map((other) => (
+                                    <option key={other.id} value={other.id}>
+                                        A {other.province_name} — {other.country_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label>
+                            Cílová pobřežní provincie:{" "}
+                            <input type="text" value={convoyTarget} maxLength={3} placeholder="BEL"
+                                onChange={(event) => setConvoyTarget(event.target.value)} />
+                        </label>
+                    </div>
+                )}
 
                 {orderType === "support" && (
                     <div>
@@ -377,6 +426,9 @@ useEffect(() => {
                         {existingOrder.order_type.toUpperCase()}
                     </strong>
 
+                    {existingOrder.order_type === "move" && existingOrder.via_convoy && " VIA CONVOY"}
+                    {existingOrder.order_type === "convoy" &&
+                        ` A ${existingOrder.convoyed_origin} → ${existingOrder.convoy_target_code}`}
                     {existingOrder.target_code &&
                         ` → ${existingOrder.target_code}`
                     }

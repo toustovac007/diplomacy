@@ -65,7 +65,8 @@ def _evaluate_battles(units, orders, active_convoys):
         )
 
         if is_support_hold:
-            if supported_order.order_type not in {"hold", "convoy"}:
+            # HOLD, SUPPORT and CONVOY are stationary movement-phase orders.
+            if supported_order.order_type == "move":
                 support.result = "failed"
                 support.result_reason = "void_support"
                 continue
@@ -167,7 +168,7 @@ def _evaluate_battles(units, orders, active_convoys):
 
         if (
             unit_order
-            and unit_order.order_type in {"hold", "convoy"}
+            and unit_order.order_type != "move"
         ):
             for support in uncut_supports:
                 if (

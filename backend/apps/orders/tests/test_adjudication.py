@@ -389,6 +389,67 @@ class AdjudicationTestCase(TestCase):
                 defender.is_dislodged,
             )
 
+    def check_hold_support_defense(self, defender_order_type):
+        defender = self.create_army(self.player1, "BEL")
+        holder = self.create_army(self.player1, "HOL")
+        supporter = Unit.objects.create(
+            game=self.game, owner=self.player1, unit_type="fleet",
+            province=self.province("ENG"),
+        )
+        attacker = self.create_army(self.player2, "PIC")
+        attack_support = self.create_army(self.player2, "BUR")
+
+        def order(unit, order_type, **fields):
+            return Order.objects.create(
+                phase=self.phase, unit=unit, order_type=order_type,
+                origin_province=unit.province, **fields,
+            )
+
+        fields = {}
+        if defender_order_type == "support":
+            fields = dict(supported_unit=holder,
+                          supported_origin_province=holder.province,
+                          support_target_province=holder.province)
+        elif defender_order_type == "move":
+            # HOL is occupied by a friendly holder, so the MOVE cannot leave.
+            fields = dict(target_province=holder.province)
+        order(defender, defender_order_type, **fields)
+        hold_support = order(
+            supporter, "support", supported_unit=defender,
+            supported_origin_province=defender.province,
+            support_target_province=defender.province,
+        )
+        order(attacker, "move", target_province=defender.province)
+        order(attack_support, "support", supported_unit=attacker,
+              supported_origin_province=attacker.province,
+              support_target_province=defender.province)
+
+        resolve_movement_phase(self.phase)
+        defender.refresh_from_db()
+        attacker.refresh_from_db()
+        hold_support.refresh_from_db()
+        if defender_order_type == "move":
+            self.assertEqual(hold_support.result_reason, "void_support")
+            self.assertEqual(hold_support.result, "failed")
+            self.assertTrue(defender.is_dislodged)
+            self.assertEqual(attacker.province.code, "BEL")
+        else:
+            self.assertEqual(hold_support.result_reason, "support")
+            self.assertEqual(hold_support.result, "success")
+            # Strength-two attack must bounce against strength-two defense.
+            self.assertFalse(defender.is_dislodged)
+            self.assertEqual(attacker.province.code, "PIC")
+            self.assertEqual(defender.province.code, "BEL")
+
+    def test_hold_order_receives_hold_support_defense(self):
+        self.check_hold_support_defense("hold")
+
+    def test_support_order_receives_hold_support_defense(self):
+        self.check_hold_support_defense("support")
+
+    def test_blocked_move_cannot_receive_hold_support_defense(self):
+        self.check_hold_support_defense("move")
+
     def test_attack_cuts_support(self):
             attacker = self.create_army(
                 self.player1,

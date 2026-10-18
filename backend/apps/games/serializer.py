@@ -2,6 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import Game, GamePlayer, GamePhase, Unit
+from .services.supply_centers import get_supply_center_count
 
 from apps.games.models import (
     Game,
@@ -65,6 +66,7 @@ class GamePhaseSerializer(serializers.ModelSerializer):
 
 
 class UnitSerializer(serializers.ModelSerializer):
+    province_type = serializers.CharField(source="province.province_type", read_only=True)
     is_dislodged = serializers.BooleanField(read_only=True)
 
     owner_username = serializers.CharField(
@@ -121,6 +123,7 @@ class UnitSerializer(serializers.ModelSerializer):
             "province",
             "province_name",
             "province_code",
+            "province_type",
             "coast",
         )
 
@@ -155,6 +158,13 @@ class SupplyCenterOwnershipSerializer(serializers.ModelSerializer):
 
 
 class GameSerializer(serializers.ModelSerializer):
+    winner = GamePlayerSerializer(read_only=True)
+    finished_at = serializers.DateTimeField(read_only=True)
+    winner_supply_center_count = serializers.SerializerMethodField()
+
+    def get_winner_supply_center_count(self, obj):
+        return get_supply_center_count(obj.winner) if obj.winner_id else None
+
     creator = serializers.CharField(
         source="creator.username",
         read_only=True
@@ -192,6 +202,9 @@ class GameSerializer(serializers.ModelSerializer):
             "units",
             "supply_centers",
             "current_phase",
+            "winner",
+            "winner_supply_center_count",
+            "finished_at",
         )
 
         read_only_fields = (

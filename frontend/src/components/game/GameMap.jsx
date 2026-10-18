@@ -235,6 +235,7 @@ function GameMap({
 
     selectedUnit = null,
     supportedUnit = null,
+    convoyedUnit = null,
     selectedTarget = "",
     draftOrderType = null,
 
@@ -601,8 +602,8 @@ function GameMap({
                     origin,
                     target,
                     {
-                        markerId:
-                            "move-arrow",
+                        markerId: order.via_convoy ? "convoy-arrow" : "move-arrow",
+                        dash: order.via_convoy ? "14 6 3 6" : "",
                     }
                 );
 
@@ -636,15 +637,8 @@ function GameMap({
                 continue;
             }
 
-            /*
-             * CONVOY is not implemented by the backend yet, but the renderer
-             * is already prepared for it.
-             */
             if (order.order_type === "convoy") {
-                const targetCode = (
-                    order.target_code ||
-                    order.support_target_code
-                )?.toUpperCase();
+                const targetCode = order.convoy_target_code?.toUpperCase();
 
                 const target =
                     unitPositions[targetCode];
@@ -788,8 +782,7 @@ function GameMap({
             }
 
             if (
-                selectedUnit?.id ===
-                unit.id
+                selectedUnit?.id === unit.id || convoyedUnit?.id === unit.id
             ) {
                 const selectionRing =
                     createSvgElement(
@@ -818,7 +811,7 @@ function GameMap({
 
                 selectionRing.setAttribute(
                     "stroke",
-                    "#f59e0b"
+                    convoyedUnit?.id === unit.id ? "#06b6d4" : "#f59e0b"
                 );
 
                 selectionRing.setAttribute(
@@ -881,10 +874,10 @@ function GameMap({
         /*
          * Radial actions for a selected own unit or an authorized build center.
          *
-         * Army: H / M / S
+         * Coastal Army: H / M / S / V
          * Fleet: H / M / S / C
          *
-         * C is deliberately disabled until backend convoy adjudication exists.
+         * Convoy eligibility comes from the unit's province metadata.
          */
         const buildCenter = phaseType === "adjustment"
             ? buildableCenters.find((center) => center.code === selectedTarget)
@@ -967,9 +960,9 @@ function GameMap({
                         {
                             type: "convoy",
                             label: "C",
-                            title: "CONVOY – zatím není implementovaný",
+                            title: "CONVOY – přeprava armády",
                             angle: 180,
-                            disabled: true,
+                            disabled: phaseType !== "movement" || selectedUnit.province_type !== "sea",
                         },
                     ]
                     : [
@@ -983,14 +976,17 @@ function GameMap({
                             type: "move",
                             label: "M",
                             title: "MOVE",
-                            angle: 30,
+                            angle: selectedUnit.province_type === "coastal" ? 0 : 30,
                         },
                         {
                             type: "support",
                             label: "S",
                             title: "SUPPORT",
-                            angle: 150,
+                            angle: selectedUnit.province_type === "coastal" ? 90 : 150,
                         },
+                        ...(phaseType === "movement" && selectedUnit.province_type === "coastal"
+                            ? [{ type: "move-convoy", label: "V", title: "MOVE VIA CONVOY", angle: 180 }]
+                            : []),
                     ];
 
                 const orbitRadius = 60;
@@ -1030,6 +1026,7 @@ function GameMap({
                     const active =
                         draftOrderType ===
                             option.type ||
+                        (option.type === "convoy" && draftOrderType?.startsWith("convoy-")) ||
                         (
                             option.type ===
                                 "support" &&
@@ -1706,6 +1703,7 @@ if (coastSelection) {
         units,
         supplyCenters,
         supportedUnit,
+        convoyedUnit,
         onSupportModeSelect,
         activeUnitByProvince,
         myUnitIds,

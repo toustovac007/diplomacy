@@ -213,7 +213,9 @@ function Home() {
                             </p>
 
                             <p>
-                                Stav: {game.status}
+                                Stav: {game.status === "finished"
+                                    ? `Dokončena${game.winner ? ` — vítěz: ${game.winner.country_name}` : ""}`
+                                    : game.status}
                             </p>
 
                             <p>
