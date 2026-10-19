@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from apps.games.models import GamePhase, Unit
 from apps.orders.models import Order
+from apps.orders.services.snapshots import order_snapshot, save_snapshot
 from apps.orders.services.convoys import ConvoyRoutes
 
 from apps.games.services.phase_manager import (
@@ -564,6 +565,7 @@ def resolve_movement_phase(phase):
     )
 
     successful_moves, dislodged_by = _resolve_convoys(units, orders)
+    save_snapshot(phase, [order_snapshot(order) for order in orders])
 
     Order.objects.bulk_update(
         orders,

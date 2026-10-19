@@ -142,6 +142,7 @@ def can_build_unit(
     return False
 
 from django.db import transaction
+from apps.orders.services.snapshots import adjustment_snapshot, save_snapshot
 from django.utils import timezone
 
 from apps.games.models import (
@@ -209,6 +210,9 @@ def resolve_adjustment_phase(
         .order_by("id")
     )
 
+    # Capture each finalized action before deleting its unit. Persist the
+    # complete JSON list once, in this same transaction, when closing Winter.
+    snapshots = []
     orders_by_player = {}
 
     for player in players:
@@ -403,6 +407,7 @@ def resolve_adjustment_phase(
 
             order.result = "success"
             order.result_reason = "build"
+            snapshots.append(adjustment_snapshot(order))
 
     # =====================================
     # 3. PROVEDEME DISBAND
@@ -482,6 +487,7 @@ def resolve_adjustment_phase(
                 ]
             )
 
+            snapshots.append(adjustment_snapshot(order))
             unit.delete()
 
         # -------------------------------
@@ -502,12 +508,14 @@ def resolve_adjustment_phase(
                 is_default=True,
             )
 
+            snapshots.append(adjustment_snapshot(auto_order))
             unit.delete()
 
     # =====================================
     # 4. UZAVŘEME WINTER
     # =====================================
 
+    save_snapshot(phase, snapshots)
     phase.status = "resolved"
     phase.resolved_at = timezone.now()
 

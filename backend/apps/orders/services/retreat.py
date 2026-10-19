@@ -1,4 +1,5 @@
 from django.db import transaction
+from apps.orders.services.snapshots import order_snapshot, save_snapshot
 from django.utils import timezone
 
 from apps.games.models import GamePhase, Unit
@@ -220,6 +221,8 @@ def resolve_retreat_phase(phase):
             "result_reason",
         ],
     )
+
+    save_snapshot(phase, [order_snapshot(order) for order in orders.values()])
 
     # Úspěšné retreaty.
     retreated_unit_ids = set()

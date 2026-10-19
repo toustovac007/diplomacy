@@ -1,5 +1,9 @@
 import api from "./api";
 
+export async function getPreviousResolvedOrders(gameId) {
+    return (await api.get(`orders/games/${gameId}/previous/`)).data;
+}
+
 export async function getAdjustmentStatus(gameId) {
     return (await api.get(`orders/games/${gameId}/adjustment-status/`)).data;
 }

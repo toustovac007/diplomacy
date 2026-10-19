@@ -41,6 +41,30 @@ from .services.retreat import (
 
 
 
+class PreviousResolvedOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, game_id):
+        game = get_object_or_404(Game, pk=game_id, players__user=request.user,
+                                 status__in=["active", "finished"])
+        phases = game.phases.filter(status="resolved")
+        if game.status == "active":
+            current = game.phases.filter(status="open").order_by("-sequence").first()
+            phases = phases.filter(sequence__lt=current.sequence) if current else phases.none()
+        phase = phases.order_by("-sequence").first()
+        if phase is None or phase.resolved_orders_snapshot is None:
+            return Response({"phase": None, "orders": [], "history_available": False})
+        return Response({
+            "phase": {
+                "id": phase.pk, "sequence": phase.sequence, "year": phase.year,
+                "season": phase.season, "season_name": phase.get_season_display(),
+                "phase_type": phase.phase_type, "phase_type_name": phase.get_phase_type_display(),
+                "resolved_at": phase.resolved_at,
+            },
+            "orders": phase.resolved_orders_snapshot, "history_available": True,
+        })
+
+
 class OrderListCreateView(generics.ListCreateAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]

@@ -109,3 +109,52 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Finished-game presentation; active-game styles remain unchanged. */
+.victory-screen { display: grid; gap: 28px; margin: 32px auto; padding: 0 clamp(12px, 3vw, 28px); text-align: left; min-width: 0; }
+.victory-card {
+  border: 1px solid var(--border); border-top: 6px solid var(--winner-color);
+  border-radius: 16px; padding: clamp(20px, 4vw, 44px); box-shadow: var(--shadow);
+  background: var(--bg);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--winner-color) 12%, var(--bg)), var(--bg));
+}
+.victory-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.victory-eyebrow { font-size: .72rem; font-weight: 750; letter-spacing: .15em; text-transform: uppercase; }
+.victory-heading > .victory-eyebrow { flex-basis: 100%; }
+.victory-heading h2 { font-size: clamp(1.7rem, 4vw, 2.5rem); margin: 0; line-height: 1.15; }
+.victory-return { margin-left: auto; display: inline-flex; gap: 16px; padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; color: var(--text-h); background: var(--bg); text-decoration: none; font-size: .85rem; }
+.victory-return:hover { text-decoration: underline; }
+.victory-return:focus-visible { outline: 3px solid var(--winner-color); outline-offset: 3px; }
+.victory-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; margin: 32px 0; }
+.victory-country { color: var(--text-h); font-size: clamp(2rem, 5vw, 3.3rem); line-height: 1.12; margin: 8px 0 14px; overflow-wrap: anywhere; }
+.victory-country-code { display: inline-block; border-left: 4px solid var(--winner-color); padding-left: 10px; font-weight: 750; color: var(--text-h); }
+.victory-player { margin-top: 16px; overflow-wrap: anywhere; }
+.victory-score { display: grid; gap: 8px; border-left: 1px solid var(--border); padding-left: 32px; text-align: center; }
+.victory-score strong { font-size: clamp(3rem, 6vw, 4.5rem); line-height: 1; font-variant-numeric: tabular-nums; color: var(--text-h); }
+.victory-score span, .victory-meta { font-size: .85rem; }
+.victory-meta { border-top: 1px solid var(--border); padding-top: 18px; }
+.victory-fallback { margin: 28px 0; }
+.final-standings, .final-map-section { min-width: 0; }
+.victory-screen h3:not(.victory-country) { color: var(--text-h); margin: 0 0 16px; }
+.final-standings-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.final-standings table { width: 100%; border-collapse: collapse; font-size: .9rem; table-layout: fixed; }
+.final-standings th, .final-standings td { padding: 14px 16px; border-bottom: 1px solid var(--border); text-align: left; overflow-wrap: anywhere; }
+.final-standings thead { background: var(--code-bg); color: var(--text-h); }
+.final-standings tbody tr:last-child > * { border-bottom: 0; }
+.final-standings-winner { background: var(--code-bg); color: var(--text-h); }
+.final-standings .standings-number { text-align: right; font-variant-numeric: tabular-nums; }
+.country-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+.victory-winner-label { display: inline-block; font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; margin-left: 8px; }
+.victory-table-caption { caption-side: bottom; padding: 12px 16px; text-align: left; font-size: .75rem; }
+.final-map-section > section { margin-bottom: 20px; }
+.final-map-section button { padding: 8px 12px; cursor: pointer; }
+.final-map-section ul { padding-left: 24px; }
+.finished-game-summary { margin: 8px 0; }
+.finished-game-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; background: var(--code-bg); border: 1px solid var(--border); color: var(--text-h); font-size: .8rem; font-weight: 650; }
+.finished-game-summary p { margin-top: 6px; }
+@media (max-width: 700px) {
+  .victory-result { grid-template-columns: minmax(0, 1fr); }
+  .victory-score { border-left: 0; border-top: 1px solid var(--border); padding: 20px 0 0; text-align: left; }
+  .victory-return { margin-left: 0; }
+  .final-standings th, .final-standings td { padding: 10px 8px; }
+}

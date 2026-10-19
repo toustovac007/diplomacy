@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { COUNTRY_COLORS } from "./countryColors";
 
 
 
@@ -36,15 +37,7 @@ const SVG_ID_TO_GAME_CODE = {
     tys: "TYS",
 };
 
-const COUNTRY_COLORS = {
-    AUS: "#c48f85",
-    ENG: "#8a2be2",
-    FRA: "#4169e1",
-    GER: "#a08a75",
-    ITA: "#228b22",
-    RUS: "#757d91",
-    TUR: "#b9a61c",
-};
+
 
 const SUPPLY_CENTER_COLORS = {
     AUS: "#e0b7b0",
@@ -212,14 +205,14 @@ function drawArrow(
     layer.appendChild(inner);
 }
 
-function drawHold(layer, position) {
+function drawHold(layer, position, color = "#111827") {
     const ring = createSvgElement("circle");
 
     ring.setAttribute("cx", String(position.x));
     ring.setAttribute("cy", String(position.y));
     ring.setAttribute("r", "31");
     ring.setAttribute("fill", "none");
-    ring.setAttribute("stroke", "#111827");
+    ring.setAttribute("stroke", color);
     ring.setAttribute("stroke-width", "5");
 
     layer.appendChild(ring);
@@ -231,6 +224,8 @@ function GameMap({
     units = [],
     myUnits = [],
     orders = [],
+    historicalOrders = [],
+    showHistoricalOrders = false,
     supplyCenters = [],
 
     selectedUnit = null,
@@ -537,6 +532,8 @@ function GameMap({
             "#111827"
         );
 
+        addArrowMarker(defs, "failed-arrow", "#dc2626");
+
         const orderLayer =
             createSvgElement("g");
 
@@ -564,11 +561,13 @@ function GameMap({
          * Draw saved orders first so unit markers and the wheel remain
          * visually above them.
          */
-        for (const order of orders) {
+        for (const order of (showHistoricalOrders ? historicalOrders : orders)) {
+            const failed = showHistoricalOrders && order.result === "failed";
+            const color = failed ? "#dc2626" : "#111827";
             const originCode =
                 order.origin?.toUpperCase();
 
-            const origin = order.order_type === "retreat"
+            const origin = !showHistoricalOrders && order.order_type === "retreat"
                 ? positionForUnit(units.find((unit) => unit.id === order.saved_unit_id))
                 : unitPositions[originCode];
 
@@ -579,7 +578,8 @@ function GameMap({
             if (order.order_type === "hold") {
                 drawHold(
                     orderLayer,
-                    origin
+                    origin,
+                    color
                 );
 
                 continue;
@@ -602,7 +602,8 @@ function GameMap({
                     origin,
                     target,
                     {
-                        markerId: order.via_convoy ? "convoy-arrow" : "move-arrow",
+                        markerId: failed ? "failed-arrow" : order.via_convoy ? "convoy-arrow" : "move-arrow",
+                        innerStroke: color,
                         dash: order.via_convoy ? "14 6 3 6" : "",
                     }
                 );
@@ -629,8 +630,8 @@ function GameMap({
                     target,
                     {
                         dash: "3 8",
-                        markerId:
-                            "support-arrow",
+                        markerId: failed ? "failed-arrow" : "support-arrow",
+                        innerStroke: color,
                     }
                 );
 
@@ -653,8 +654,8 @@ function GameMap({
                     target,
                     {
                         dash: "14 6 3 6",
-                        markerId:
-                            "convoy-arrow",
+                        markerId: failed ? "failed-arrow" : "convoy-arrow",
+                        innerStroke: color,
                     }
                 );
             }
@@ -690,7 +691,7 @@ function GameMap({
             }
 
             const hasSavedOrder =
-                ordersByUnitId.has(
+                !showHistoricalOrders && ordersByUnitId.has(
                     Number(unit.id)
                 );
 
@@ -765,7 +766,7 @@ function GameMap({
                 group.appendChild(title);
             }
 
-            if (phaseType === "retreat") {
+            if (phaseType === "retreat" && !showHistoricalOrders) {
                 const canSelect = unit.is_dislodged && myUnitIds.has(unit.id);
                 // Override the unit layer's pointer-events="none". All markers
                 // consume clicks so an occupant cannot select a defender beneath it.
@@ -782,7 +783,7 @@ function GameMap({
             }
 
             if (
-                selectedUnit?.id === unit.id || convoyedUnit?.id === unit.id
+                !showHistoricalOrders && (selectedUnit?.id === unit.id || convoyedUnit?.id === unit.id)
             ) {
                 const selectionRing =
                     createSvgElement(
@@ -883,12 +884,12 @@ function GameMap({
             ? buildableCenters.find((center) => center.code === selectedTarget)
             : null;
         if (
-            (buildCenter && coastSelection?.mode !== "build") ||
+            !showHistoricalOrders && ((buildCenter && coastSelection?.mode !== "build") ||
             (selectedUnit &&
             (phaseType !== "retreat" || selectedUnit.is_dislodged) &&
             myUnitIds.has(
                 selectedUnit.id
-            ))
+            )))
         ) {
             const selectedPosition = buildCenter
                 ? unitPositions[buildCenter.code]
@@ -1170,7 +1171,7 @@ function GameMap({
 
 
 if (
-    draftOrderType === "support-mode" &&
+    !showHistoricalOrders && draftOrderType === "support-mode" &&
     supportedUnit
 ) {
     const position =
@@ -1330,7 +1331,7 @@ if (
 }
 
 
-if (coastSelection) {
+if (coastSelection && !showHistoricalOrders) {
     const position =
         unitPositions[
             coastSelection
@@ -1548,20 +1549,20 @@ if (coastSelection) {
         };
 
         highlightProvince(
-            selectedUnit?.province_code,
+            showHistoricalOrders ? null : selectedUnit?.province_code,
             "#f59e0b",
             "7",
             "brightness(1.12)"
         );
 
         highlightProvince(
-            selectedTarget,
+            showHistoricalOrders ? null : selectedTarget,
             "#ef4444",
             "7",
             "brightness(1.10)"
         );
 
-        if (phaseType === "adjustment") {
+        if (phaseType === "adjustment" && !showHistoricalOrders) {
             for (const center of buildableCenters) {
                 if (center.code !== selectedTarget) {
                     highlightProvince(center.code, "#22c55e", "7", "brightness(1.12)");
@@ -1588,7 +1589,7 @@ if (coastSelection) {
                     "all";
 
                 shape.style.cursor =
-                    "pointer";
+                    showHistoricalOrders ? "default" : "pointer";
             }
 
             mouseLayer.style.pointerEvents =
@@ -1597,6 +1598,7 @@ if (coastSelection) {
             mouseLayerListener = (
                 event
             ) => {
+                if (showHistoricalOrders) return;
                 let current =
                     event.target;
 
@@ -1697,6 +1699,8 @@ if (coastSelection) {
         };
     }, [
         phaseType,
+        historicalOrders,
+        showHistoricalOrders,
         buildableCenters,
         svgMarkup,
         unitPositions,

@@ -212,11 +212,10 @@ function Home() {
                                 Zakladatel: {game.creator}
                             </p>
 
-                            <p>
-                                Stav: {game.status === "finished"
-                                    ? `Dokončena${game.winner ? ` — vítěz: ${game.winner.country_name}` : ""}`
-                                    : game.status}
-                            </p>
+                            {game.status === "finished" ? <div className="finished-game-summary">
+                                <span className="finished-game-badge">✓ Dokončena</span>
+                                {game.winner && <p>Vítěz: <strong>{game.winner.country_name}</strong> — {game.winner.username}</p>}
+                            </div> : <p>Stav: {game.status}</p>}
 
                             <p>
                                 Hráči:{" "}

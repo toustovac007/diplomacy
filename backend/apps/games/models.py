@@ -106,6 +106,8 @@ class GamePlayer(models.Model):
 
 
 class GamePhase(models.Model):
+    # None denotes legacy/unavailable history; [] is a complete empty phase.
+    resolved_orders_snapshot = models.JSONField(null=True, default=None, blank=True)
     SEASON_CHOICES = [
         ("spring", "Jaro"),
         ("fall", "Podzim"),

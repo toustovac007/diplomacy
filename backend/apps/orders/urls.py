@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    PreviousResolvedOrdersView,
     OrderListCreateView,
     ResolvePhaseView,
     RetreatOrderListCreateView,
@@ -13,6 +14,7 @@ from .views import (
 
 
 urlpatterns = [
+    path("games/<int:game_id>/previous/", PreviousResolvedOrdersView.as_view(), name="previous-resolved-orders"),
     path("games/<int:game_id>/adjustment-status/", AdjustmentStatusView.as_view(), name="adjustment-status"),
     path("games/<int:game_id>/adjustments/<int:order_id>/", AdjustmentOrderCancelView.as_view(), name="adjustment-order-cancel"),
     path(

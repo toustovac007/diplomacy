@@ -9,6 +9,7 @@ import OrderPanel from "../components/game/OrderPanel";
 
 import {
     getOrders,
+    getPreviousResolvedOrders,
     submitOrder,
     getRetreatOrders,
     submitRetreatOrder,
@@ -19,6 +20,7 @@ import {
 } from "../services/orders";
 
 import GameMap from "../components/game/GameMap";
+import VictorySummary from "../components/game/VictorySummary";
 
 const MULTI_COASTS = {
     SPA: ["nc", "sc"],
@@ -26,6 +28,24 @@ const MULTI_COASTS = {
     BUL: ["ec", "sc"],
 };
 
+
+function historicalOrderLabel(order) {
+    const unit = order.unit_type === "army" ? "A" : "F";
+    const origin = `${order.origin ?? "?"}${order.origin_coast_code ? `/${order.origin_coast_code}` : ""}`;
+    const target = `${order.target_code ?? "?"}${order.saved_target_coast ? `/${order.saved_target_coast}` : ""}`;
+    if (order.order_type === "build" || order.order_type === "disband") {
+        return `${order.order_type.toUpperCase()} ${unit} ${origin}`;
+    }
+    const prefix = `${unit} ${origin}`;
+    if (order.order_type === "support") {
+        const action = order.supported_origin === order.support_target_code
+            ? "HOLD" : `→ ${order.support_target_code}`;
+        return `${prefix} S ${order.supported_unit_type === "army" ? "A" : "F"} ${order.supported_origin} ${action}`;
+    }
+    if (order.order_type === "convoy") return `${prefix} C A ${order.convoyed_origin} → ${order.convoy_target_code}`;
+    if (order.order_type === "hold") return `${prefix} HOLD`;
+    return `${prefix}${order.order_type === "retreat" ? " RETREAT" : order.via_convoy ? " VIA CONVOY" : ""} → ${target}`;
+}
 
 function GameDetail() {
 
@@ -47,6 +67,26 @@ function GameDetail() {
     const { user } = useAuth();
 
     const [game, setGame] = useState(null);
+    const [previousHistory, setPreviousHistory] = useState(null);
+    // Cache is scoped to the game and current phase; stale requests cannot replace it.
+    const historyKey = `${gameId}:${game?.status}:${game?.current_phase?.id ?? "none"}`;
+    const history = previousHistory?.key === historyKey ? previousHistory : null;
+    const showPreviousOrders = history?.show === true;
+    const togglePreviousOrders = async () => {
+        if (history?.show || history?.data || history?.loading) {
+            setPreviousHistory({ ...history, show: !history.show });
+            return;
+        }
+        setPreviousHistory({ key: historyKey, show: true, loading: true, error: "", data: null });
+        try {
+            const data = await getPreviousResolvedOrders(gameId);
+            setPreviousHistory((current) => current?.key === historyKey
+                ? { ...current, loading: false, data } : current);
+        } catch (error) {
+            setPreviousHistory((current) => current?.key === historyKey
+                ? { ...current, loading: false, error: error.response?.data?.detail || "Historické rozkazy se nepodařilo načíst." } : current);
+        }
+    };
     const isRetreat = game?.current_phase?.phase_type === "retreat";
     const isAdjustment = game?.current_phase?.phase_type === "adjustment";
     const [adjustmentStatus, setAdjustmentStatus] = useState(null);
@@ -665,6 +705,29 @@ const handleCoastSelect = async (coastCode) => {
     }
 
 
+    const previousOrdersPanel = (
+        <section>
+            <button type="button" onClick={togglePreviousOrders}>
+                {showPreviousOrders ? "Skrýt poslední rozkazy" : "Zobrazit poslední rozkazy"}
+            </button>
+            {showPreviousOrders && <>
+                {history.loading && <p>Načítání posledních rozkazů...</p>}
+                {history.error && <p role="alert">{history.error}</p>}
+                {history.data && (!history.data.history_available
+                    ? <p>Pro předchozí fázi nejsou historická data k dispozici.</p>
+                    : <>
+                        <h3>Poslední vyhodnocená fáze: {history.data.phase.season_name} {history.data.phase.year} — {history.data.phase.phase_type_name}</h3>
+                        <p>Historický náhled — mapa je pouze ke čtení.</p>
+                        <ul>{history.data.orders.map((order, index) => <li key={`${order.id}-${index}`}
+                            style={{ color: order.result === "failed" ? "#dc2626" : undefined }}>
+                            {order.result === "failed" ? "✗" : "✓"} {order.country}: {historicalOrderLabel(order)}
+                            {order.result === "failed" && ` — ${order.result_reason}`}
+                        </li>)}</ul>
+                    </>)}
+            </>}
+        </section>
+    );
+
     const isCreator =
         game.creator === user?.username;
 
@@ -798,16 +861,14 @@ const handleCoastSelect = async (coastCode) => {
             )}
 
             {game.status === "finished" && (
-                <section>
-                    <h2>Hra skončila</h2>
-                    {game.winner ? <>
-                        <p>Vítěz: <strong>{game.winner.country_name} ({game.winner.country})</strong></p>
-                        <p>Hráč: {game.winner.username}</p>
-                        <p>Supply centra: {game.winner_supply_center_count}</p>
-                    </> : <p>Údaj o vítězi není k dispozici.</p>}
-                    {game.finished_at && <p>Ukončeno: {new Date(game.finished_at).toLocaleString("cs-CZ")}</p>}
-                    <GameMap phaseType="finished" units={game.units ?? []}
-                        supplyCenters={game.supply_centers ?? []} />
+                <section className="victory-screen">
+                    <VictorySummary game={game} />
+                    <section className="final-map-section" aria-labelledby="final-map-title">
+                        <h3 id="final-map-title">Konečný stav mapy</h3>
+                        {previousOrdersPanel}
+                        <GameMap showHistoricalOrders={showPreviousOrders} historicalOrders={history?.data?.orders ?? []} phaseType="finished" units={game.units ?? []}
+                            supplyCenters={game.supply_centers ?? []} />
+                    </section>
                 </section>
             )}
 
@@ -961,7 +1022,10 @@ const handleCoastSelect = async (coastCode) => {
                                 </section>
                             )}
 
+                            {previousOrdersPanel}
                             <GameMap
+                                showHistoricalOrders={showPreviousOrders}
+                                historicalOrders={history?.data?.orders ?? []}
                                 onBuildTypeSelect={handleBuild}
                                 buildableCenters={buildableCenters}
                                 phaseType={game.current_phase.phase_type}
