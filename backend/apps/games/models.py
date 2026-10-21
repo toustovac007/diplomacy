@@ -1,4 +1,7 @@
+import uuid
+
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -28,13 +31,21 @@ class Game(models.Model):
         default="waiting",
     )
 
+    # Deprecated compatibility field; phase deadlines use the settings below.
     turn_duration_minutes = models.PositiveIntegerField(
         default=1440,
     )
 
     max_players = models.PositiveIntegerField(
         default=7,
+        validators=[MinValueValidator(2), MaxValueValidator(7)],
     )
+
+    is_public = models.BooleanField(default=True)
+    invite_code = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    movement_duration_minutes = models.PositiveIntegerField(default=1440, validators=[MinValueValidator(1), MaxValueValidator(10080)])
+    retreat_duration_minutes = models.PositiveIntegerField(default=720, validators=[MinValueValidator(1), MaxValueValidator(10080)])
+    adjustment_duration_minutes = models.PositiveIntegerField(default=720, validators=[MinValueValidator(1), MaxValueValidator(10080)])
 
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -45,6 +56,8 @@ class Game(models.Model):
         related_name="won_games",
     )
     finished_at = models.DateTimeField(null=True, blank=True)
+    result_type = models.CharField(max_length=10, choices=[("solo", "Solo victory"), ("draw", "Draw")], null=True, blank=True)
+    draw_participants = models.ManyToManyField("GamePlayer", blank=True, related_name="draw_results")
 
     def clean(self):
         super().clean()
@@ -108,6 +121,7 @@ class GamePlayer(models.Model):
 class GamePhase(models.Model):
     # None denotes legacy/unavailable history; [] is a complete empty phase.
     resolved_orders_snapshot = models.JSONField(null=True, default=None, blank=True)
+    resolved_state_snapshot = models.JSONField(null=True, default=None, blank=True)
     SEASON_CHOICES = [
         ("spring", "Jaro"),
         ("fall", "Podzim"),
@@ -123,6 +137,7 @@ class GamePhase(models.Model):
     STATUS_CHOICES = [
         ("open", "Probíhá"),
         ("resolved", "Vyhodnocena"),
+        ("cancelled", "Ukončena dohodou"),
     ]
 
     game = models.ForeignKey(
@@ -180,6 +195,31 @@ class GamePhase(models.Model):
             f"{self.get_season_display()} {self.year} "
             f"({self.get_phase_type_display()})"
         )
+
+
+class DrawProposal(models.Model):
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="draw_proposals")
+    proposer = models.ForeignKey(GamePlayer, on_delete=models.PROTECT, related_name="proposed_draws")
+    status = models.CharField(max_length=10, default="open", choices=[
+        ("open", "Open"), ("accepted", "Accepted"), ("rejected", "Rejected"), ("cancelled", "Cancelled")])
+    participants = models.ManyToManyField(GamePlayer, related_name="proposed_draw_results")
+    voters = models.ManyToManyField(GamePlayer, through="DrawVote", related_name="draw_proposals_to_vote")
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["game"], condition=models.Q(status="open"), name="one_open_draw_per_game")]
+
+
+class DrawVote(models.Model):
+    # A row is an immutable voter snapshot; null vote means pending.
+    proposal = models.ForeignKey(DrawProposal, on_delete=models.CASCADE, related_name="votes")
+    player = models.ForeignKey(GamePlayer, on_delete=models.PROTECT, related_name="draw_votes")
+    vote = models.CharField(max_length=10, choices=[("accept", "Accept"), ("reject", "Reject")], null=True, blank=True)
+    voted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["proposal", "player"], name="unique_draw_vote")]
 
 
 class Unit(models.Model):

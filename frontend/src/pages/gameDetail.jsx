@@ -1,3 +1,5 @@
+import GameHistory from "../components/game/GameHistory";
+import historicalOrderLabel from "../components/game/historicalOrderLabel";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -20,7 +22,10 @@ import {
 } from "../services/orders";
 
 import GameMap from "../components/game/GameMap";
+import GameSettingsSummary from "../components/game/GameSettingsSummary";
 import VictorySummary from "../components/game/VictorySummary";
+import GameChat from "../components/game/GameChat";
+import DrawProposalPanel from "../components/game/DrawProposalPanel";
 
 const MULTI_COASTS = {
     SPA: ["nc", "sc"],
@@ -29,23 +34,6 @@ const MULTI_COASTS = {
 };
 
 
-function historicalOrderLabel(order) {
-    const unit = order.unit_type === "army" ? "A" : "F";
-    const origin = `${order.origin ?? "?"}${order.origin_coast_code ? `/${order.origin_coast_code}` : ""}`;
-    const target = `${order.target_code ?? "?"}${order.saved_target_coast ? `/${order.saved_target_coast}` : ""}`;
-    if (order.order_type === "build" || order.order_type === "disband") {
-        return `${order.order_type.toUpperCase()} ${unit} ${origin}`;
-    }
-    const prefix = `${unit} ${origin}`;
-    if (order.order_type === "support") {
-        const action = order.supported_origin === order.support_target_code
-            ? "HOLD" : `→ ${order.support_target_code}`;
-        return `${prefix} S ${order.supported_unit_type === "army" ? "A" : "F"} ${order.supported_origin} ${action}`;
-    }
-    if (order.order_type === "convoy") return `${prefix} C A ${order.convoyed_origin} → ${order.convoy_target_code}`;
-    if (order.order_type === "hold") return `${prefix} HOLD`;
-    return `${prefix}${order.order_type === "retreat" ? " RETREAT" : order.via_convoy ? " VIA CONVOY" : ""} → ${target}`;
-}
 
 function GameDetail() {
 
@@ -776,20 +764,7 @@ const handleCoastSelect = async (coastCode) => {
                 <strong>{game.status}</strong>
             </p>
 
-            <p>
-                Délka kola:{" "}
-                <strong>
-                    {game.turn_duration_minutes} minut
-                </strong>
-            </p>
-
-            <p>
-                Počet hráčů:{" "}
-                <strong>
-                    {game.players.length}/{game.max_players}
-                </strong>
-            </p>
-
+            <GameSettingsSummary game={game} />
 
             {error && (
                 <p>{error}</p>
@@ -859,6 +834,15 @@ const handleCoastSelect = async (coastCode) => {
                     )}
                 </>
             )}
+
+            {currentPlayer && ["active", "finished"].includes(game.status) &&
+                <GameHistory key={`${game.id}:${game.current_phase?.id}:${game.status}`} gameId={game.id} />}
+
+            {currentPlayer && ["active", "finished"].includes(game.status) &&
+                <GameChat key={`chat:${game.id}:${currentPlayer.id}`} game={game} currentPlayer={currentPlayer} />}
+
+            {currentPlayer && game.status === "active" &&
+                <DrawProposalPanel key={`draw:${game.id}:${currentPlayer.id}`} gameId={game.id} currentPlayer={currentPlayer} onGameFinished={loadGame} />}
 
             {game.status === "finished" && (
                 <section className="victory-screen">

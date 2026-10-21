@@ -158,7 +158,18 @@ class SupplyCenterOwnershipSerializer(serializers.ModelSerializer):
 
 
 class GameSerializer(serializers.ModelSerializer):
+    turn_duration_minutes = serializers.IntegerField(min_value=1, max_value=10080, required=False)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if request and request.user.is_authenticated and instance.players.filter(user=request.user).exists():
+            data["invite_code"] = str(instance.invite_code)
+        return data
+
     winner = GamePlayerSerializer(read_only=True)
+    result_type = serializers.CharField(read_only=True, allow_null=True)
+    draw_participants = GamePlayerSerializer(many=True, read_only=True)
     finished_at = serializers.DateTimeField(read_only=True)
     winner_supply_center_count = serializers.SerializerMethodField()
 
@@ -197,6 +208,10 @@ class GameSerializer(serializers.ModelSerializer):
             "status",
             "turn_duration_minutes",
             "max_players",
+            "is_public",
+            "movement_duration_minutes",
+            "retreat_duration_minutes",
+            "adjustment_duration_minutes",
             "created_at",
             "players",
             "units",
@@ -205,6 +220,8 @@ class GameSerializer(serializers.ModelSerializer):
             "winner",
             "winner_supply_center_count",
             "finished_at",
+            "result_type",
+            "draw_participants",
         )
 
         read_only_fields = (
@@ -218,6 +235,12 @@ class GameSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         user = self.context["request"].user
+        # Legacy API clients may still submit one duration; deadlines use only
+        # the three phase settings after creation.
+        legacy_duration = validated_data.get("turn_duration_minutes")
+        if legacy_duration is not None:
+            for phase_type in ("movement", "retreat", "adjustment"):
+                validated_data.setdefault(f"{phase_type}_duration_minutes", legacy_duration)
 
         game = Game.objects.create(
             creator=user,
@@ -243,4 +266,18 @@ class GameSerializer(serializers.ModelSerializer):
             return None
 
         return GamePhaseSerializer(phase).data
+
+
+class PublicGameSerializer(serializers.ModelSerializer):
+    creator = serializers.CharField(source="creator.username", read_only=True)
+    players = GamePlayerSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Game
+        fields = ("id", "name", "creator", "status", "players", "max_players", "is_public",
+                  "movement_duration_minutes", "retreat_duration_minutes", "adjustment_duration_minutes")
+
+
+class JoinByCodeSerializer(serializers.Serializer):
+    invite_code = serializers.UUIDField()
 

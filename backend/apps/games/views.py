@@ -7,12 +7,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Game, GamePlayer, GamePhase
-from .serializer import GameSerializer
+from .serializer import GameSerializer, PublicGameSerializer, JoinByCodeSerializer
 
 import random
 
-from datetime import timedelta
-from django.utils import timezone
 
 from .services.game_setup import create_starting_units
 
@@ -38,13 +36,13 @@ class GameListCreateView(generics.ListCreateAPIView):
 
 
 class PublicGameListView(generics.ListAPIView):
-    serializer_class = GameSerializer
+    serializer_class = PublicGameSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return (
             Game.objects
-            .filter(status="waiting")
+            .filter(status="waiting", is_public=True)
             .exclude(players__user=self.request.user)
             .distinct()
             .order_by("-created_at")
@@ -54,12 +52,15 @@ class PublicGameListView(generics.ListAPIView):
 class JoinGameView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @transaction.atomic
-    def post(self, request, game_id):
-        game = get_object_or_404(
+    def get_game(self, request, game_id):
+        return get_object_or_404(
             Game.objects.select_for_update(),
-            id=game_id
+            id=game_id, is_public=True,
         )
+
+    @transaction.atomic
+    def post(self, request, game_id=None):
+        game = self.get_game(request, game_id)
 
         if game.status != "waiting":
             return Response(
@@ -87,12 +88,19 @@ class JoinGameView(APIView):
             user=request.user
         )
 
-        serializer = GameSerializer(game)
+        serializer = GameSerializer(game, context={"request": request})
 
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
+
+
+class JoinByCodeView(JoinGameView):
+    def get_game(self, request, game_id):
+        serializer = JoinByCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return get_object_or_404(Game.objects.select_for_update(), **serializer.validated_data)
 
 
 class GameDetailView(generics.RetrieveAPIView):
@@ -145,6 +153,9 @@ class StartGameView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if len(players) > game.max_players:
+            return Response({"detail": "Počet hráčů přesahuje kapacitu hry."}, status=status.HTTP_400_BAD_REQUEST)
+
         available_countries = [
             country[0]
             for country in GamePlayer.COUNTRY_CHOICES
@@ -169,11 +180,6 @@ class StartGameView(APIView):
 
         initialize_supply_centers(game)
 
-        deadline = (
-                timezone.now()
-                + timedelta(minutes=game.turn_duration_minutes)
-        )
-
         create_phase(
             game=game,
             sequence=1,
@@ -182,7 +188,7 @@ class StartGameView(APIView):
             phase_type="movement",
         )
 
-        serializer = GameSerializer(game)
+        serializer = GameSerializer(game, context={"request": request})
 
         return Response(
             serializer.data,

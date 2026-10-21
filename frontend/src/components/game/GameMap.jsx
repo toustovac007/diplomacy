@@ -551,7 +551,7 @@ function GameMap({
 
         const positionForUnit = (unit) => {
             const position = unitPositions[unit?.province_code?.toUpperCase()];
-            return position && phaseType === "retreat" && unit.is_dislodged
+            return position && (phaseType === "retreat" || showHistoricalOrders) && unit.is_dislodged
                 // Separate both markers, their selection rings and the R/D wheel.
                 ? { x: position.x + 64, y: position.y + 40 }
                 : position;
@@ -759,7 +759,7 @@ function GameMap({
 
             group.appendChild(circle);
 
-            if (phaseType === "retreat" && unit.is_dislodged) {
+            if ((phaseType === "retreat" || showHistoricalOrders) && unit.is_dislodged) {
                 circle.setAttribute("stroke-dasharray", "5 4");
                 const title = createSvgElement("title");
                 title.textContent = "Vytlačená jednotka — vyžaduje ústup nebo rozpuštění";

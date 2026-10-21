@@ -152,7 +152,48 @@ code {
 .finished-game-summary { margin: 8px 0; }
 .finished-game-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; background: var(--code-bg); border: 1px solid var(--border); color: var(--text-h); font-size: .8rem; font-weight: 650; }
 .finished-game-summary p { margin-top: 6px; }
+.notification-settings { margin: 24px 12px; padding: 16px; text-align: left; border: 1px solid var(--border); border-radius: 12px; }
+.notification-settings fieldset { border: 0; padding: 0; }
+.notification-settings label { display: block; margin: 8px 0; }
+.notification-settings button { padding: 8px 16px; margin-top: 8px; }
+.draw-panel { margin: 24px 12px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; text-align: left; overflow-wrap: anywhere; }
+.draw-panel h3 { margin: 12px 0; }
+.draw-panel label { display: block; margin: 8px 0; }
+.draw-panel button { padding: 8px 12px; cursor: pointer; }
+.draw-panel button:disabled { cursor: default; opacity: .6; }
+.draw-panel fieldset { border: 1px solid var(--border); margin-top: 12px; }
+.draw-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.draw-result { padding: 0; list-style: none; font-size: 1.2rem; line-height: 1.8; }
+.game-chat { margin: 28px 12px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; text-align: left; }
+.chat-layout { display: grid; grid-template-columns: minmax(180px, 28%) minmax(0, 1fr); gap: 20px; }
+.game-chat button { cursor: pointer; padding: 8px 12px; }
+.game-chat button:disabled { cursor: default; opacity: .6; }
+.chat-sidebar, .chat-thread { min-width: 0; }
+.chat-sidebar ul { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.chat-sidebar li button { width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text-h); }
+.chat-sidebar button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-preview { display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text); font-size: .8rem; }
+.chat-unread { display: inline-block; font-size: .7rem; padding: 0 6px; border-radius: 8px; background: var(--accent-bg); }
+.chat-create fieldset { border: 1px solid var(--border); padding: 8px; margin: 12px 0; min-width: 0; }
+.chat-create label { display: block; font-size: .85rem; margin-bottom: 8px; overflow-wrap: anywhere; }
+.chat-create input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; }
+.chat-thread h3 { margin: 0 0 6px; color: var(--text-h); overflow-wrap: anywhere; }
+.chat-participants { font-size: .75rem; overflow-wrap: anywhere; }
+.chat-history { height: 390px; overflow-y: auto; overflow-anchor: none; border-block: 1px solid var(--border); padding: 12px 4px; margin: 12px 0; }
+.chat-message { width: fit-content; max-width: 85%; margin: 12px 0; padding: 10px 14px; background: var(--code-bg); border-left: 3px solid var(--chat-country); border-radius: 8px; overflow-wrap: anywhere; }
+.chat-message strong { font-size: .8rem; color: var(--text-h); }
+.chat-message time { display: block; font-size: .65rem; margin-top: 5px; }
+.chat-own { margin-left: auto; }
+.chat-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-phase { text-align: center; font-size: .75rem; margin: 16px 0; }
+.chat-compose { display: grid; gap: 8px; }
+.chat-compose textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.chat-compose span { font-size: .7rem; }
+.chat-compose button { justify-self: end; }
 @media (max-width: 700px) {
+  .chat-layout { grid-template-columns: minmax(0, 1fr); }
+  .game-chat { padding: 12px; }
+  .chat-sidebar ul { max-height: 220px; overflow-y: auto; }
   .victory-result { grid-template-columns: minmax(0, 1fr); }
   .victory-score { border-left: 0; border-top: 1px solid var(--border); padding: 20px 0 0; text-align: left; }
   .victory-return { margin-left: 0; }

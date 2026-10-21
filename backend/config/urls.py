@@ -23,6 +23,8 @@ from rest_framework_simplejwt.views import (
 
 
 urlpatterns = [
+    path("api/notifications/", include("apps.notifications.urls")),
+    path("api/games/<int:game_id>/chats/", include("apps.chats.urls")),
     path("admin/", admin.site.urls),
 
     path("api/users/", include("apps.users.urls")),

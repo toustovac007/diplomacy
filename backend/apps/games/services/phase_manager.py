@@ -17,6 +17,15 @@ from apps.notifications.services import (
 )
 
 
+def get_phase_duration_minutes(game, phase_type):
+    fields = {
+        "movement": "movement_duration_minutes",
+        "retreat": "retreat_duration_minutes",
+        "adjustment": "adjustment_duration_minutes",
+    }
+    return getattr(game, fields[phase_type])
+
+
 def create_phase(
     game,
     sequence,
@@ -24,7 +33,7 @@ def create_phase(
     season,
     phase_type,
 ):
-    return GamePhase.objects.create(
+    phase = GamePhase.objects.create(
         game=game,
         sequence=sequence,
         year=year,
@@ -34,15 +43,16 @@ def create_phase(
         deadline=(
             timezone.now()
             + timedelta(
-                minutes=game.turn_duration_minutes
+                minutes=get_phase_duration_minutes(game, phase_type)
             )
         ),
     )
     transaction.on_commit(
-        lambda: send_phase_started_notifications(
-            phase
+        lambda phase_id=phase.pk: send_phase_started_notifications(
+            phase_id
         )
     )
+    return phase
 
 
 def create_next_after_movement(

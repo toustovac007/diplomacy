@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.games.models import GamePhase, Unit
 from apps.orders.models import Order
-from apps.orders.services.snapshots import order_snapshot, save_snapshot
+from apps.orders.services.snapshots import order_snapshot, save_snapshot, capture_resolved_phase_state
 from apps.orders.services.convoys import ConvoyRoutes
 
 from apps.games.services.phase_manager import (
@@ -671,5 +671,7 @@ def resolve_movement_phase(phase):
             dislodged_units
         ),
     )
+
+    capture_resolved_phase_state(phase)
 
     return phase

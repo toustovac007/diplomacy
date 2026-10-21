@@ -1,5 +1,5 @@
 from django.db import transaction
-from apps.orders.services.snapshots import order_snapshot, save_snapshot
+from apps.orders.services.snapshots import order_snapshot, save_snapshot, capture_resolved_phase_state
 from django.utils import timezone
 
 from apps.games.models import GamePhase, Unit
@@ -278,5 +278,7 @@ def resolve_retreat_phase(phase):
     create_next_after_retreat(
         phase
     )
+
+    capture_resolved_phase_state(phase)
 
     return phase

@@ -142,7 +142,7 @@ def can_build_unit(
     return False
 
 from django.db import transaction
-from apps.orders.services.snapshots import adjustment_snapshot, save_snapshot
+from apps.orders.services.snapshots import adjustment_snapshot, save_snapshot, capture_resolved_phase_state
 from django.utils import timezone
 
 from apps.games.models import (
@@ -533,6 +533,8 @@ def resolve_adjustment_phase(
     create_next_after_adjustment(
         phase
     )
+
+    capture_resolved_phase_state(phase)
 
     return phase
 

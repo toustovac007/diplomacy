@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand
+from apps.notifications.services import process_deadline_reminders
 
 from apps.games.services.deadlines import (
     process_expired_phases,
@@ -13,6 +14,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         results = process_expired_phases()
+        reminders = process_deadline_reminders()
+        self.stdout.write(f"Odeslané deadline připomínky: {reminders}")
 
         if not results:
             self.stdout.write(
