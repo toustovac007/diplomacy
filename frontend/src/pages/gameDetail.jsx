@@ -55,6 +55,14 @@ function GameDetail() {
     const { user } = useAuth();
 
     const [game, setGame] = useState(null);
+    const [tabSelection, setTabSelection] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const tabScope = gameId + ":" + game?.status;
+    const activeTab = tabSelection?.scope === tabScope ? tabSelection.tab : "game";
+    const historyVisited = tabSelection?.scope === tabScope && tabSelection.historyVisited;
+    const selectTab = (tab) => setTabSelection({
+        scope: tabScope, tab, historyVisited: historyVisited || tab === "history",
+    });
     const [previousHistory, setPreviousHistory] = useState(null);
     // Cache is scoped to the game and current phase; stale requests cannot replace it.
     const historyKey = `${gameId}:${game?.status}:${game?.current_phase?.id ?? "none"}`;
@@ -131,8 +139,6 @@ function GameDetail() {
             } else {
                 data = await (isRetreat ? getRetreatOrders : getOrders)(gameId);
             }
-
-            console.log("ORDERS Z API:", data);
 
 
             setOrders(data);
@@ -735,50 +741,13 @@ const handleCoastSelect = async (coastCode) => {
         ? adjustmentStatus.buildable_home_centers : [];
 
 
-    console.log(
-        "MOJE JEDNOTKY:",
-        myUnits.map((unit) => ({
-            id: unit.id,
-            province: unit.province_name,
-        }))
-    );
 
 
 
 
-    return (
-        <div>
-            <Link to="/">
-                ← Zpět na moje hry
-            </Link>
-
-            <h1>{game.name}</h1>
-
-            <p>
-                Zakladatel:{" "}
-                <strong>{game.creator}</strong>
-            </p>
-
-            <p>
-                Stav:{" "}
-                <strong>{game.status}</strong>
-            </p>
-
-            <GameSettingsSummary game={game} />
-
-            {error && (
-                <p>{error}</p>
-            )}
-
-            {message && (
-                <p>{message}</p>
-            )}
-
-
-            <hr />
-
-            <h2>Hráči</h2>
-
+    const gameInfo = <>
+        <p>Zakladatel: <strong>{game.creator}</strong></p>
+        <h3>Hráči</h3>
             <ul>
                 {game.players.map((player) => (
                     <li key={player.id}>
@@ -797,6 +766,47 @@ const handleCoastSelect = async (coastCode) => {
                     </li>
                 ))}
             </ul>
+        <GameSettingsSummary game={game} />
+        {game.status !== "waiting" && !game.is_public && game.invite_code &&
+            <p>Pozvánka: <code className="game-invite-code">{game.invite_code}</code></p>}
+    </>;
+    const hasTabs = ["active", "finished"].includes(game.status);
+    const tabs = [{ id: "game", label: game.status === "finished" ? "Výsledek" : "Hra" },
+        ...(currentPlayer ? [{ id: "diplomacy", label: "Diplomacie" }, { id: "history", label: "Historie" }] : [])];
+    const tabKeyDown = (event, index) => {
+        let next;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = tabs.length - 1;
+        else return;
+        event.preventDefault();
+        selectTab(tabs[next].id);
+        event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next].focus();
+    };
+
+    return (
+        <div className="game-detail-page">
+            <header className="game-header">
+                <Link to="/">← Zpět na moje hry</Link>
+                <h1>{game.name}</h1>
+                {hasTabs && <div className="game-header-meta">
+                    {game.status === "finished" ? <span>Dokončena{game.finished_at && " · " + new Date(game.finished_at).toLocaleString("cs-CZ")}</span>
+                        : <span>{currentPlayer?.country_name}{game.current_phase && " · " + game.current_phase.season_name + " " + game.current_phase.year + " · " + game.current_phase.phase_type_name}</span>}
+                    <span>Hráči: {game.players.length}/{game.max_players}</span>
+                </div>}
+            </header>
+            {error && <p role="alert">{error}</p>}
+            {message && <p role="status">{message}</p>}
+            {hasTabs ? <details className="game-info-details"><summary>Informace o hře</summary>{gameInfo}</details> : gameInfo}
+            {hasTabs && <div className="game-tabs" role="tablist" aria-label="Sekce hry">
+                {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab"
+                    className="game-tab" id={"game-tab-" + tab.id} aria-controls={"game-panel-" + tab.id}
+                    aria-selected={activeTab === tab.id} tabIndex={activeTab === tab.id ? 0 : -1}
+                    onKeyDown={(event) => tabKeyDown(event, index)} onClick={() => selectTab(tab.id)}>
+                    {tab.label}{tab.id === "diplomacy" && unreadCount > 0 && <span className="tab-badge" aria-label={unreadCount + " nepřečtených zpráv"}>{unreadCount}</span>}
+                </button>)}
+            </div>}
 
             {game.status === "waiting" && (
                 <>
@@ -835,15 +845,8 @@ const handleCoastSelect = async (coastCode) => {
                 </>
             )}
 
-            {currentPlayer && ["active", "finished"].includes(game.status) &&
-                <GameHistory key={`${game.id}:${game.current_phase?.id}:${game.status}`} gameId={game.id} />}
-
-            {currentPlayer && ["active", "finished"].includes(game.status) &&
-                <GameChat key={`chat:${game.id}:${currentPlayer.id}`} game={game} currentPlayer={currentPlayer} />}
-
-            {currentPlayer && game.status === "active" &&
-                <DrawProposalPanel key={`draw:${game.id}:${currentPlayer.id}`} gameId={game.id} currentPlayer={currentPlayer} onGameFinished={loadGame} />}
-
+            {hasTabs && <section className="game-tab-panel" role="tabpanel" id="game-panel-game"
+                aria-labelledby="game-tab-game" hidden={activeTab !== "game"} tabIndex={0}>
             {game.status === "finished" && (
                 <section className="victory-screen">
                     <VictorySummary game={game} />
@@ -858,50 +861,13 @@ const handleCoastSelect = async (coastCode) => {
 
             {game.status === "active" && (
                 <>
-                    <hr />
-
-                    <h2>Hra probíhá</h2>
-
-
-                                    {currentPlayer && (
-                    <div>
-                        <h3>Tvůj stát</h3>
-
-                        <p>
-                            <strong>
-                                {currentPlayer.country_name}
-                            </strong>
-                            {" "}
-                            ({currentPlayer.country})
-                        </p>
-                    </div>
-                )}
-
-
-
-
-
                     {game.current_phase ? (
                         <div>
-                            <h3>
-                                {game.current_phase.season_name}{" "}
-                                {game.current_phase.year}
-                            </h3>
-
-                            <p>
-                                Fáze:{" "}
-                                <strong>
-                                    {game.current_phase.phase_type_name}
-                                </strong>
-                            </p>
-
-                            <p>
-                                Stav:{" "}
-                                <strong>
-                                    {game.current_phase.status}
-                                </strong>
-                            </p>
-
+                            <section className="game-phase-card">
+                                <h2>{game.current_phase.season_name} {game.current_phase.year} — {game.current_phase.phase_type_name}</h2>
+                                {currentPlayer && <p>Tvůj stát: <strong>{currentPlayer.country_name} ({currentPlayer.country})</strong></p>}
+                                <p>Deadline: <strong>{new Date(game.current_phase.deadline).toLocaleString("cs-CZ")}</strong></p>
+                                <p>Stav fáze: {game.current_phase.status}</p>
                             {isCreator && game.current_phase.status === "open" && (
                                 <button
                                     type="button"
@@ -914,7 +880,9 @@ const handleCoastSelect = async (coastCode) => {
                                 </button>
                             )}
 
-                            <h3>Moje jednotky</h3>
+                            </section>
+                            {currentPlayer && <DrawProposalPanel key={"draw:" + game.id + ":" + currentPlayer.id} gameId={game.id} currentPlayer={currentPlayer} onGameFinished={loadGame} />}
+                            <details className="game-unit-details"><summary>Moje jednotky ({myUnits.length})</summary>
 
                             {myUnits.length > 0 ? (
                                 <ul>
@@ -938,6 +906,8 @@ const handleCoastSelect = async (coastCode) => {
                                 <p>Nemáš žádné jednotky.</p>
                             )}
 
+
+                            </details>
 
                             {isAdjustment && (
                                 <section>
@@ -1132,18 +1102,6 @@ const handleCoastSelect = async (coastCode) => {
                                                     order.saved_unit_id === unit.id
                                             );
 
-                                            console.log(
-                                                "PÁROVÁNÍ:",
-                                                {
-                                                    unitId: unit.id,
-                                                    province: unit.province_name,
-                                                    orderIds: orders.map(
-                                                        (order) => order.saved_unit_id
-                                                    ),
-                                                    foundOrder: existingOrder,
-                                                }
-                                            );
-
                                             return (
                                                 <OrderPanel
                                                     key={unit.id}
@@ -1159,7 +1117,7 @@ const handleCoastSelect = async (coastCode) => {
                                 </>
                             )}
 
-                                <h3>Všechny jednotky</h3>
+                                <details className="game-unit-details"><summary>Všechny jednotky</summary>
 
                                 <ul>
                                     {game.units.map((unit) => (
@@ -1187,14 +1145,8 @@ const handleCoastSelect = async (coastCode) => {
 
 
 
-                            <p>
-                                Deadline:{" "}
-                                <strong>
-                                    {new Date(
-                                        game.current_phase.deadline
-                                    ).toLocaleString("cs-CZ")}
-                                </strong>
-                            </p>
+                                </details>
+
                         </div>
                     ) : (
                         <p>
@@ -1203,6 +1155,16 @@ const handleCoastSelect = async (coastCode) => {
                     )}
                 </>
             )}
+            </section>}
+            {hasTabs && currentPlayer && <section className="game-tab-panel" role="tabpanel" id="game-panel-diplomacy"
+                aria-labelledby="game-tab-diplomacy" hidden={activeTab !== "diplomacy"} tabIndex={0}>
+                <GameChat key={"chat:" + game.id + ":" + currentPlayer.id} game={game} currentPlayer={currentPlayer}
+                    visible={activeTab === "diplomacy"} onUnreadCountChange={setUnreadCount} />
+            </section>}
+            {hasTabs && currentPlayer && <section className="game-tab-panel" role="tabpanel" id="game-panel-history"
+                aria-labelledby="game-tab-history" hidden={activeTab !== "history"} tabIndex={0}>
+                {historyVisited && <GameHistory key={"history:" + game.id + ":" + game.current_phase?.id + ":" + game.status} gameId={game.id} embedded />}
+            </section>}
         </div>
     );
 }
