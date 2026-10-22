@@ -1,3 +1,7 @@
+from django.conf import settings
+from apps.games.services.phase_lock import lock_game, lock_phase, phase_transaction
+from apps.games.services.readiness import ensure_player_orders_editable
+from .services.adjustments import get_remaining_adjustments
 from django.shortcuts import render
 from django.db import transaction
 from django.utils import timezone
@@ -41,6 +45,16 @@ from .services.retreat import (
 
 
 
+class EditableOrdersMixin:
+    @phase_transaction
+    def create(self, request, *args, **kwargs):
+        game = lock_game(kwargs["game_id"])
+        phase = lock_phase(self.get_phase())
+        player = get_object_or_404(GamePlayer, game=game, user=request.user)
+        ensure_player_orders_editable(phase, player)
+        return super().create(request, *args, **kwargs)
+
+
 class PreviousResolvedOrdersView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -65,7 +79,7 @@ class PreviousResolvedOrdersView(APIView):
         })
 
 
-class OrderListCreateView(generics.ListCreateAPIView):
+class OrderListCreateView(EditableOrdersMixin, generics.ListCreateAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
@@ -120,6 +134,8 @@ class ResolvePhaseView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, game_id):
+        if not settings.ALLOW_MANUAL_PHASE_RESOLVE:
+            return Response({"detail": "Ruční vyhodnocení fáze není povoleno."}, status=403)
         game = get_object_or_404(
             Game,
             id=game_id,
@@ -183,8 +199,9 @@ class RetreatOrderListCreateView(generics.ListCreateAPIView):
     serializer_class = RetreatOrderSerializer
     permission_classes = [IsAuthenticated]
 
-    @transaction.atomic
+    @phase_transaction
     def create(self, request, *args, **kwargs):
+        lock_game(kwargs["game_id"])
         # Serialize submissions with each other and with manual/deadline
         # resolution. Recheck status after acquiring the phase lock.
         phase = get_object_or_404(
@@ -266,6 +283,8 @@ class ResolveRetreatPhaseView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, game_id):
+        if not settings.ALLOW_MANUAL_PHASE_RESOLVE:
+            return Response({"detail": "Ruční vyhodnocení fáze není povoleno."}, status=403)
         game = get_object_or_404(
             Game,
             id=game_id,
@@ -326,7 +345,7 @@ class ResolveRetreatPhaseView(APIView):
         )
 
 class AdjustmentOrderListCreateView(
-    generics.ListCreateAPIView
+    EditableOrdersMixin, generics.ListCreateAPIView
 ):
     serializer_class = AdjustmentOrderSerializer
     permission_classes = [IsAuthenticated]
@@ -412,8 +431,7 @@ class AdjustmentStatusView(AdjustmentOrderListCreateView):
             "phase_id": phase.id, "delta": delta,
             "supply_center_count": unit_count + delta, "unit_count": unit_count,
             "build_count": build_count, "disband_count": disband_count,
-            "builds_remaining": max(0, build_count - orders.filter(order_type="build").count()),
-            "disbands_remaining": max(0, disband_count - orders.filter(order_type="disband").count()),
+            **get_remaining_adjustments(phase, player),
             "buildable_home_centers": centers,
         })
 
@@ -421,13 +439,15 @@ class AdjustmentStatusView(AdjustmentOrderListCreateView):
 class AdjustmentOrderCancelView(AdjustmentOrderListCreateView):
     http_method_names = ["delete", "options"]
 
-    @transaction.atomic
+    @phase_transaction
     def delete(self, request, *args, **kwargs):
+        lock_game(kwargs["game_id"])
         # Use the same phase lock as resolution, then recheck its status.
         phase = get_object_or_404(
             GamePhase.objects.select_for_update(), pk=self.get_phase().pk,
             status="open", deadline__gt=timezone.now(),
         )
+        ensure_player_orders_editable(phase, self.get_player())
         order = get_object_or_404(
             AdjustmentOrder, pk=kwargs["order_id"], phase=phase,
             player=self.get_player(),
@@ -440,6 +460,8 @@ class ResolveAdjustmentPhaseView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, game_id):
+        if not settings.ALLOW_MANUAL_PHASE_RESOLVE:
+            return Response({"detail": "Ruční vyhodnocení fáze není povoleno."}, status=403)
         game = get_object_or_404(
             Game,
             id=game_id,

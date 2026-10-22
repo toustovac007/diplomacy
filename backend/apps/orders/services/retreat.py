@@ -1,3 +1,4 @@
+from apps.games.services.phase_lock import lock_phase
 from django.db import transaction
 from apps.orders.services.snapshots import order_snapshot, save_snapshot, capture_resolved_phase_state
 from django.utils import timezone
@@ -95,14 +96,9 @@ def can_unit_retreat(
 
 @transaction.atomic
 def resolve_retreat_phase(phase):
-    phase = (
-        GamePhase.objects
-        .select_for_update()
-        .select_related("game")
-        .get(pk=phase.pk)
-    )
+    phase = lock_phase(phase)
 
-    if phase.status != "open":
+    if phase.status != "open" or phase.game.status != "active":
         raise RetreatError(
             "Tato fáze už byla vyhodnocena."
         )

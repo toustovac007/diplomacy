@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
 
@@ -165,6 +166,11 @@ class GameSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and request.user.is_authenticated and instance.players.filter(user=request.user).exists():
             data["invite_code"] = str(instance.invite_code)
+            data["manual_resolve_allowed"] = bool(
+                settings.ALLOW_MANUAL_PHASE_RESOLVE and instance.creator_id == request.user.id
+                and instance.status == "active" and data["current_phase"]
+                and data["current_phase"]["status"] == "open"
+            )
         return data
 
     winner = GamePlayerSerializer(read_only=True)

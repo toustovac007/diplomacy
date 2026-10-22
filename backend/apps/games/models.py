@@ -421,3 +421,14 @@ class SupplyCenterOwnership(models.Model):
             f"{self.game.name}: "
             f"{self.province.code} -> {owner}"
         )
+
+
+class PhaseReadiness(models.Model):
+    phase = models.ForeignKey(GamePhase, on_delete=models.CASCADE, related_name="readiness")
+    player = models.ForeignKey(GamePlayer, on_delete=models.CASCADE, related_name="phase_readiness")
+    is_ready = models.BooleanField(default=False)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["phase", "player"], name="unique_phase_player_readiness")]

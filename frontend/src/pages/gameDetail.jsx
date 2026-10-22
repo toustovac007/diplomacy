@@ -1,6 +1,7 @@
+import PhaseReadinessPanel from "../components/game/PhaseReadinessPanel";
 import GameHistory from "../components/game/GameHistory";
 import historicalOrderLabel from "../components/game/historicalOrderLabel";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import api from "../services/api";
@@ -55,10 +56,70 @@ function GameDetail() {
     const { user } = useAuth();
 
     const [game, setGame] = useState(null);
+    const [focusGameId, setFocusGameId] = useState(null);
+    const [focusPane, setFocusPane] = useState("map");
+    const [narrowFocus, setNarrowFocus] = useState(() => window.matchMedia?.("(max-width: 850px)").matches ?? false);
+    const focusMode = focusGameId === gameId && String(game?.id) === gameId
+        && game?.status === "active" && Boolean(game.current_phase);
+    const pageRef = useRef(null);
+    const focusEntryRef = useRef(null);
+    const focusExitRef = useRef(null);
+    useEffect(() => {
+        const media = window.matchMedia?.("(max-width: 850px)");
+        const update = (event) => setNarrowFocus(event.matches);
+        media?.addEventListener("change", update);
+        return () => media?.removeEventListener("change", update);
+    }, []);
+    useEffect(() => {
+        if (!focusMode) return;
+        const bodyOverflow = document.body.style.overflow;
+        const htmlOverflow = document.documentElement.style.overflow;
+        const entry = focusEntryRef.current;
+        const page = pageRef.current;
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        focusExitRef.current?.focus();
+        const keydown = (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                setFocusGameId(null);
+            } else if (event.key === "Tab") {
+                const controls = [...pageRef.current.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')]
+                    .filter((node) => node.getClientRects().length && !node.closest('[hidden]'));
+                const first = controls[0], last = controls.at(-1);
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+        };
+        document.addEventListener("keydown", keydown);
+        return () => {
+            document.body.style.overflow = bodyOverflow;
+            document.documentElement.style.overflow = htmlOverflow;
+            document.removeEventListener("keydown", keydown);
+            // After React has restored normal visibility (or rendered the result).
+            queueMicrotask(() => (entry?.isConnected ? entry : page)?.focus());
+        };
+    }, [focusMode]);
+    const [readiness, setReadiness] = useState(null);
+    const ordersLocked = !["retreat", undefined].includes(game?.current_phase?.phase_type)
+        && readiness?.phase?.id === game?.current_phase?.id
+        && (readiness.is_ready || readiness.pending || readiness.phase_resolved);
+    const handleReadinessChange = (value) => {
+        setReadiness(value);
+        if (value.is_ready || value.pending) {
+            setSelectedUnit(null);
+            setMapTarget("");
+            setDraftOrderType(null);
+            setSupportedUnit(null);
+            setConvoyedUnit(null);
+            setCoastSelection(null);
+        }
+    };
     const [tabSelection, setTabSelection] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const tabScope = gameId + ":" + game?.status;
     const activeTab = tabSelection?.scope === tabScope ? tabSelection.tab : "game";
+    const chatVisible = focusMode ? (!narrowFocus || focusPane === "chat") : activeTab === "diplomacy";
     const historyVisited = tabSelection?.scope === tabScope && tabSelection.historyVisited;
     const selectTab = (tab) => setTabSelection({
         scope: tabScope, tab, historyVisited: historyVisited || tab === "history",
@@ -101,6 +162,10 @@ function GameDetail() {
             const response = await api.get(`games/${gameId}/`);
 
             if (game?.current_phase?.id !== response.data.current_phase?.id) {
+                setOrders([]);
+                setAdjustmentStatus(null);
+                setMapOrderError("");
+                setMapOrderMessage("");
                 setSelectedUnit(null);
                 setDraftOrderType(null);
                 setSupportedUnit(null);
@@ -191,6 +256,7 @@ function GameDetail() {
 
 
     const saveMapOrder = async (data) => {
+        if (ordersLocked) return;
         if (isAdjustment && (adjustmentSaving || resolving)) return;
         if (isAdjustment) setAdjustmentSaving(true);
         setMapOrderError("");
@@ -249,6 +315,7 @@ function GameDetail() {
     };
 
     const handleCancelAdjustment = async (orderId) => {
+        if (ordersLocked) return;
         if (adjustmentSaving || resolving) return;
         setAdjustmentSaving(true);
         setMapOrderError("");
@@ -270,6 +337,7 @@ function GameDetail() {
     };
 
     const handleBuild = async (unitType) => {
+        if (ordersLocked) return;
         const center = adjustmentStatus?.buildable_home_centers.find((item) => item.code === mapTarget);
         if (!center || adjustmentSaving || resolving || adjustmentStatus.builds_remaining <= 0) return;
         if (unitType === "fleet" && center.fleet_coast_codes.length) {
@@ -284,6 +352,7 @@ function GameDetail() {
         provinceCode,
         clickedUnit
     ) => {
+        if (ordersLocked) return;
         if (isAdjustment) {
             if (adjustmentSaving || !adjustmentStatus || adjustmentStatus.builds_remaining <= 0) return;
             if (!adjustmentStatus.buildable_home_centers.some((center) => center.code === provinceCode)) return;
@@ -420,6 +489,7 @@ if (
 
 
 const handleCoastSelect = async (coastCode) => {
+        if (ordersLocked) return;
     if (isAdjustment && coastSelection?.mode === "build") {
         await saveMapOrder({
             order_type: "build", unit_type: "fleet",
@@ -472,6 +542,7 @@ const handleCoastSelect = async (coastCode) => {
 
 
     const handleMapOrderType = async (orderType) => {
+        if (ordersLocked) return;
         if (!selectedUnit) {
             return;
         }
@@ -530,6 +601,7 @@ const handleCoastSelect = async (coastCode) => {
 
 
     const handleSupportModeSelect = async (mode) => {
+        if (ordersLocked) return;
         if (!selectedUnit || !supportedUnit) {
             return;
         }
@@ -605,7 +677,7 @@ const handleCoastSelect = async (coastCode) => {
             resolving || adjustmentSaving ||
             game?.status !== "active" ||
             game?.current_phase?.status !== "open" ||
-            game.creator !== user?.username
+            game.manual_resolve_allowed !== true
         ) {
             return;
         }
@@ -786,7 +858,22 @@ const handleCoastSelect = async (coastCode) => {
     };
 
     return (
-        <div className="game-detail-page">
+        <div ref={pageRef} className={`game-detail-page${focusMode ? " focus-mode" : ""}`}
+            role={focusMode ? "dialog" : undefined} aria-modal={focusMode ? true : undefined}
+            aria-label={focusMode ? "Herní režim" : undefined} tabIndex={focusMode ? undefined : -1}>
+            <div className="focus-toolbar" hidden={!focusMode}>
+                <div><strong>{game.name}{currentPlayer?.country_name && " · " + currentPlayer.country_name}</strong>
+                    {game.current_phase && <span>{game.current_phase.season_name} {game.current_phase.year} — {game.current_phase.phase_type_name}
+                        {game.current_phase.deadline && " · Deadline: " + new Date(game.current_phase.deadline).toLocaleString("cs-CZ")}</span>}
+                    {readiness?.phase?.id === game.current_phase?.id && readiness?.readiness_supported &&
+                        <span>Připraveno: {readiness.ready_count} / {readiness.required_count}{readiness.is_ready && " · ✓ Hotovo"}</span>}
+                </div>
+                <div className="focus-mobile-switch" hidden={!narrowFocus} aria-label="Zobrazení herního režimu">
+                    <button type="button" aria-pressed={focusPane === "map"} onClick={() => setFocusPane("map")}>Mapa</button>
+                    <button type="button" aria-pressed={focusPane === "chat"} onClick={() => setFocusPane("chat")}>Chat{unreadCount > 0 && ` (${unreadCount})`}</button>
+                </div>
+                <button type="button" ref={focusExitRef} onClick={() => setFocusGameId(null)}>Ukončit herní režim</button>
+            </div>
             <header className="game-header">
                 <Link to="/">← Zpět na moje hry</Link>
                 <h1>{game.name}</h1>
@@ -846,7 +933,7 @@ const handleCoastSelect = async (coastCode) => {
             )}
 
             {hasTabs && <section className="game-tab-panel" role="tabpanel" id="game-panel-game"
-                aria-labelledby="game-tab-game" hidden={activeTab !== "game"} tabIndex={0}>
+                aria-labelledby={focusMode ? undefined : "game-tab-game"} hidden={activeTab !== "game"} tabIndex={focusMode ? -1 : 0}>
             {game.status === "finished" && (
                 <section className="victory-screen">
                     <VictorySummary game={game} />
@@ -862,13 +949,14 @@ const handleCoastSelect = async (coastCode) => {
             {game.status === "active" && (
                 <>
                     {game.current_phase ? (
-                        <div>
+                        <div className="active-game-content">
                             <section className="game-phase-card">
                                 <h2>{game.current_phase.season_name} {game.current_phase.year} — {game.current_phase.phase_type_name}</h2>
                                 {currentPlayer && <p>Tvůj stát: <strong>{currentPlayer.country_name} ({currentPlayer.country})</strong></p>}
                                 <p>Deadline: <strong>{new Date(game.current_phase.deadline).toLocaleString("cs-CZ")}</strong></p>
                                 <p>Stav fáze: {game.current_phase.status}</p>
-                            {isCreator && game.current_phase.status === "open" && (
+                                <button type="button" ref={focusEntryRef} onClick={() => { setFocusPane("map"); setFocusGameId(gameId); }}>Mapa na celou obrazovku</button>
+                            {game.manual_resolve_allowed === true && (
                                 <button
                                     type="button"
                                     onClick={handleResolvePhase}
@@ -881,6 +969,10 @@ const handleCoastSelect = async (coastCode) => {
                             )}
 
                             </section>
+                            {currentPlayer && <PhaseReadinessPanel
+                                key={"ready:" + game.id + ":" + game.current_phase.id + ":" + currentPlayer.id}
+                                gameId={game.id} phaseId={game.current_phase.id} orders={orders}
+                                onChange={handleReadinessChange} onPhaseChange={loadGame} />}
                             {currentPlayer && <DrawProposalPanel key={"draw:" + game.id + ":" + currentPlayer.id} gameId={game.id} currentPlayer={currentPlayer} onGameFinished={loadGame} />}
                             <details className="game-unit-details"><summary>Moje jednotky ({myUnits.length})</summary>
 
@@ -918,7 +1010,7 @@ const handleCoastSelect = async (coastCode) => {
                                         {adjustmentStatus.delta > 0 && <>
                                             <p>Můžeš postavit až {adjustmentStatus.build_count} jednotek. Zbývá: {adjustmentStatus.builds_remaining}. Stavby jsou nepovinné.</p>
                                             <p>Vyber zvýrazněné domácí centrum na mapě nebo níže.</p>
-                                            {buildableCenters.map((center) => <button type="button" key={center.code} disabled={adjustmentSaving} onClick={() => handleMapProvinceClick(center.code)}>{center.name} ({center.code})</button>)}
+                                            {buildableCenters.map((center) => <button type="button" key={center.code} disabled={ordersLocked || adjustmentSaving} onClick={() => handleMapProvinceClick(center.code)}>{center.name} ({center.code})</button>)}
                                             {buildableCenters.length === 0 && <p>Žádné další volné domácí centrum pro stavbu.</p>}
                                         </>}
                                         {adjustmentStatus.delta < 0 && <>
@@ -933,7 +1025,7 @@ const handleCoastSelect = async (coastCode) => {
                                         const label = order.order_type === "build"
                                             ? `BUILD ${order.unit_type === "army" ? "A" : "F"} ${order.province_code}${order.saved_coast_code ? ` (${order.saved_coast_code.toUpperCase()})` : ""}`
                                             : `DISBAND ${unit?.unit_type === "army" ? "A" : "F"} ${unit?.province_code ?? "?"}`;
-                                        return <li key={order.id}>{label}{" "}<button type="button" disabled={adjustmentSaving || resolving} onClick={() => handleCancelAdjustment(order.id)}>Zrušit</button></li>;
+                                        return <li key={order.id}>{label}{" "}<button type="button" disabled={ordersLocked || adjustmentSaving || resolving} onClick={() => handleCancelAdjustment(order.id)}>Zrušit</button></li>;
                                     })}</ul>
                                     <p>Pro změnu uložený rozkaz zruš a zadej nový.</p>
                                 </section>
@@ -977,7 +1069,10 @@ const handleCoastSelect = async (coastCode) => {
                             )}
 
                             {previousOrdersPanel}
+                            <div className="focus-map-area" hidden={focusMode && narrowFocus && focusPane === "chat"}>
                             <GameMap
+                                focusMode={focusMode}
+                                ordersLocked={ordersLocked}
                                 showHistoricalOrders={showPreviousOrders}
                                 historicalOrders={history?.data?.orders ?? []}
                                 onBuildTypeSelect={handleBuild}
@@ -999,6 +1094,7 @@ const handleCoastSelect = async (coastCode) => {
                                 coastSelection={coastSelection}
 
                                 onSelectUnit={(unit) => {
+                                    if (ordersLocked) return;
                                     if (isAdjustment && adjustmentSaving) return;
                                     setSelectedUnit(unit);
 
@@ -1089,6 +1185,7 @@ const handleCoastSelect = async (coastCode) => {
 
 
 
+                            </div>
                             {game.current_phase?.phase_type === "movement" && (
                                 <>
                                     <h3>Rozkazy</h3>
@@ -1104,6 +1201,7 @@ const handleCoastSelect = async (coastCode) => {
 
                                             return (
                                                 <OrderPanel
+                                                    ordersLocked={ordersLocked}
                                                     key={unit.id}
                                                     gameId={gameId}
                                                     unit={unit}
@@ -1157,9 +1255,9 @@ const handleCoastSelect = async (coastCode) => {
             )}
             </section>}
             {hasTabs && currentPlayer && <section className="game-tab-panel" role="tabpanel" id="game-panel-diplomacy"
-                aria-labelledby="game-tab-diplomacy" hidden={activeTab !== "diplomacy"} tabIndex={0}>
+                aria-labelledby={focusMode ? undefined : "game-tab-diplomacy"} aria-label={focusMode ? "Diplomacie" : undefined} hidden={!chatVisible} tabIndex={focusMode ? -1 : 0}>
                 <GameChat key={"chat:" + game.id + ":" + currentPlayer.id} game={game} currentPlayer={currentPlayer}
-                    visible={activeTab === "diplomacy"} onUnreadCountChange={setUnreadCount} />
+                    visible={chatVisible} onUnreadCountChange={setUnreadCount} />
             </section>}
             {hasTabs && currentPlayer && <section className="game-tab-panel" role="tabpanel" id="game-panel-history"
                 aria-labelledby="game-tab-history" hidden={activeTab !== "history"} tabIndex={0}>

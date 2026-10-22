@@ -1,3 +1,4 @@
+from apps.games.services.phase_lock import lock_phase
 from apps.games.models import (
     SupplyCenterOwnership,
     Unit,
@@ -22,6 +23,14 @@ def get_disband_count(player):
         -get_adjustment_delta(player),
         0,
     )
+
+
+def get_remaining_adjustments(phase, player):
+    orders = AdjustmentOrder.objects.filter(phase=phase, player=player)
+    return {
+        "builds_remaining": max(0, get_build_count(player) - orders.filter(order_type="build").count()),
+        "disbands_remaining": max(0, get_disband_count(player) - orders.filter(order_type="disband").count()),
+    }
 
 
 def get_buildable_home_centers(player):
@@ -168,14 +177,9 @@ def resolve_adjustment_phase(
     phase,
     allow_automatic_disbands=False,
 ):
-    phase = (
-        GamePhase.objects
-        .select_for_update()
-        .select_related("game")
-        .get(pk=phase.pk)
-    )
+    phase = lock_phase(phase)
 
-    if phase.status != "open":
+    if phase.status != "open" or phase.game.status != "active":
         raise AdjustmentError(
             "Tato fáze už byla vyhodnocena."
         )

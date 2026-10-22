@@ -212,6 +212,70 @@ code {
 .game-detail-page :focus-visible { outline: 2px solid var(--text-h); outline-offset: 3px; }
 .game-tab-panel { min-width: 0; }
 .game-tab-panel[hidden] { display: none; }
+.game-map-canvas { width: 100%; max-width: 1100px; margin: 0 auto; border: 1px solid #aaa; overflow: hidden; background: #c5dfea; }
+.game-map-canvas > svg { width: 100%; height: auto; display: block; }
+.focus-toolbar[hidden], .focus-mobile-switch[hidden], .focus-map-area[hidden] { display: none; }
+.game-detail-page.focus-mode { position: fixed; inset: 0; z-index: 100; height: 100dvh; box-sizing: border-box; padding: 0; background: var(--bg); display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 26vw); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.focus-mode > :not(.focus-toolbar):not(#game-panel-game):not(#game-panel-diplomacy) { display: none; }
+.focus-mode .focus-toolbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.focus-toolbar > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.focus-toolbar span { display: block; font-size: .75rem; line-height: 1.4; }
+.focus-toolbar button { padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.focus-mode #game-panel-game, .focus-mode .active-game-content { display: contents; }
+.focus-mode .active-game-content > :not(.focus-map-area) { display: none; }
+.focus-mode .focus-map-area { grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 8px; }
+.focus-mode .focus-map-area[hidden] { display: none; }
+.focus-mode .focus-map-area > p { margin: 2px 0; font-size: .75rem; flex-shrink: 0; }
+.game-map--focus { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.game-map--focus .game-map-canvas { flex: 1; height: 100%; min-height: 0; min-width: 0; max-width: none; box-sizing: border-box; }
+.game-map--focus .game-map-canvas > svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; }
+.focus-mode #game-panel-diplomacy { grid-column: 2; grid-row: 2; min-height: 0; min-width: 0; border-left: 1px solid var(--border); overflow: hidden; }
+.focus-mode .game-chat { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; margin: 0; padding: 12px; border: 0; border-radius: 0; }
+.focus-mode .game-chat h2 { font-size: 1rem; margin: 0 0 8px; }
+.focus-mode .chat-layout { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+.focus-mode .chat-sidebar { max-height: 30%; flex: 0 0 auto; overflow: auto; }
+.focus-mode .chat-sidebar ul { margin: 6px 0; max-height: none; }
+.focus-mode .chat-thread { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+.focus-mode .chat-thread h3 { font-size: .9rem; }
+.focus-mode .chat-history { height: auto; flex: 1; min-height: 60px; margin: 6px 0; }
+.focus-mode .chat-compose { flex-shrink: 0; }
+.focus-mode .chat-compose textarea { max-height: 20dvh; }
+.focus-mobile-switch { display: flex; gap: 4px; }
+.focus-mobile-switch button[aria-pressed="true"] { outline: 2px solid var(--text-h); outline-offset: -2px; }
+@media (max-width: 850px) {
+  .game-detail-page.focus-mode { grid-template-columns: minmax(0, 1fr); }
+  .focus-mode #game-panel-diplomacy { grid-column: 1; border-left: 0; }
+  .focus-mode .focus-toolbar { flex-wrap: wrap; gap: 8px; padding: 8px; }
+  .focus-toolbar > div:first-child { flex-basis: 100%; }
+}
+.home-page { padding: clamp(12px, 3vw, 28px); text-align: left; min-width: 0; }
+.home-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+.home-header h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 0 0 8px; }
+.home-header p { margin: 0; overflow-wrap: anywhere; }
+.home-page button { cursor: pointer; }
+.home-header button, .home-action-panel button, .home-game-card button { padding: 8px 14px; }
+.home-page :focus-visible { outline: 2px solid var(--text-h); outline-offset: 3px; }
+.home-actions { display: grid; gap: 10px; }
+.home-action-panel { padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.home-action-panel summary { cursor: pointer; font-weight: 600; color: var(--text-h); }
+.home-action-panel form { margin-top: 16px; }
+.home-action-panel form > div { margin-bottom: 12px; }
+.home-action-panel input:not([type="checkbox"]), .home-action-panel select { max-width: 100%; box-sizing: border-box; padding: 6px; }
+.home-action-panel .notification-settings { margin: 16px 0 0; border: 0; padding: 0; }
+.home-feedback { overflow-wrap: anywhere; }
+.game-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; align-items: stretch; }
+.home-game-card { display: flex; flex-direction: column; min-width: 0; max-width: 32rem; padding: 20px; border: 1px solid var(--border); border-radius: 12px; overflow-wrap: anywhere; }
+.home-game-card--active { border-top: 3px solid var(--text-h); background: var(--code-bg); }
+.home-game-card h3 { color: var(--text-h); margin: 12px 0; font-size: 1.2rem; }
+.home-game-card p { margin: 8px 0; font-size: .9rem; }
+.home-game-status { display: inline-block; font-size: .75rem; padding: 2px 8px; border: 1px solid var(--border); border-radius: 16px; color: var(--text-h); }
+.home-game-card__action { margin-top: auto; padding-top: 20px; }
+.home-game-card__action a { color: var(--text-h); font-weight: 600; text-underline-offset: 4px; }
+.home-empty-state { padding: 24px 16px; border: 1px dashed var(--border); border-radius: 10px; }
+@media (max-width: 600px) {
+  .home-page .game-card-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-game-card { padding: 16px; max-width: none; }
+}
 .game-phase-card { border: 1px solid var(--border); border-radius: 12px; background: var(--code-bg); padding: 20px; margin-bottom: 20px; }
 .game-phase-card h2 { margin: 0 0 12px; font-size: 1.3rem; }
 .game-phase-card p { margin: 6px 0; }

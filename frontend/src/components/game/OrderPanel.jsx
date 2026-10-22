@@ -8,6 +8,7 @@ function OrderPanel({
     allUnits,
     existingOrder,
     onOrderSaved,
+    ordersLocked = false,
 }) {
 
     const [supportedUnitId, setSupportedUnitId] = useState("");
@@ -76,6 +77,7 @@ useEffect(() => {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
+        if (ordersLocked) return;
 
         setError("");
         setMessage("");
@@ -201,7 +203,9 @@ useEffect(() => {
                 }
             </h4>
 
+            {ordersLocked && <p>Rozkazy jsou uzamčené, protože jsi označil fázi jako hotovou.</p>}
             <form onSubmit={handleSubmit}>
+                <fieldset disabled={ordersLocked} style={{ border: 0, padding: 0, margin: 0 }}>
                 <div>
                     <label>
                         <input
@@ -409,6 +413,7 @@ useEffect(() => {
                         ? "Ukládám..."
                         : "Uložit rozkaz"}
                 </button>
+            </fieldset>
             </form>
 
             {error && (

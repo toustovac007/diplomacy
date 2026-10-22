@@ -5,7 +5,10 @@ from .draw_views import CurrentDrawView, CreateDrawView, VoteDrawView, CancelDra
 from .history_views import GameHistoryView
 
 
+from .readiness_views import PhaseReadinessView
+
 urlpatterns = [
+    path("<int:game_id>/readiness/", PhaseReadinessView.as_view(), name="game-readiness"),
     path("<int:game_id>/history/", GameHistoryView.as_view(), name="game-history"),
     path("<int:game_id>/history/<int:phase_id>/", GameHistoryView.as_view(), name="game-history-phase"),
     path("<int:game_id>/draw-proposals/", CreateDrawView.as_view()),

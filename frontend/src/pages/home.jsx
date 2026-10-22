@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
-import { Link } from "react-router-dom";
-import GameSettingsSummary from "../components/game/GameSettingsSummary";
+import HomeGameCard from "../components/game/HomeGameCard";
 import NotificationSettings from "../components/NotificationSettings";
 
 const defaultSettings = {
@@ -36,6 +35,20 @@ function Home() {
 
     const [games, setGames] = useState([]);
     const [publicGames, setPublicGames] = useState([]);
+    const [selectedTab, setSelectedTab] = useState(null);
+    const [loaded, setLoaded] = useState(false);
+    const createPanel = useRef(null);
+    const invitePanel = useRef(null);
+    const activeGames = games.filter((game) => game.status === "active");
+    const waitingGames = games.filter((game) => game.status === "waiting");
+    const finishedGames = games.filter((game) => game.status === "finished")
+        .sort((a, b) => (Date.parse(b.finished_at) || 0) - (Date.parse(a.finished_at) || 0));
+    const tabs = [
+        { id: "active", label: "Aktivní", games: activeGames, empty: "Momentálně nemáš žádnou rozehranou hru." },
+        { id: "waiting", label: "Čekající", games: waitingGames, empty: "Nemáš žádnou hru čekající na spuštění." },
+        { id: "join", label: "Připojit se", games: publicGames, empty: "Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit." },
+        { id: "finished", label: "Dokončené", games: finishedGames, empty: "Zatím nemáš žádnou dokončenou hru." },
+    ];
 
     const [name, setName] = useState("");
     const [settings, setSettings] = useState(defaultSettings);
@@ -49,6 +62,7 @@ function Home() {
         try {
             const response = await api.get("games/");
             setGames(response.data);
+            return response.data;
         } catch (error) {
             console.error(error);
             setError("Nepodařilo se načíst tvoje hry.");
@@ -60,6 +74,7 @@ function Home() {
         try {
             const response = await api.get("games/public/");
             setPublicGames(response.data);
+            return response.data;
         } catch (error) {
             console.error(error);
             setError("Nepodařilo se načíst veřejné hry.");
@@ -68,10 +83,10 @@ function Home() {
 
 
     const loadAllGames = async () => {
-        await Promise.all([
-            loadGames(),
-            loadPublicGames(),
-        ]);
+        const [own = [], joinable = []] = await Promise.all([loadGames(), loadPublicGames()]);
+        setSelectedTab((current) => current ?? (own.some((game) => game.status === "active") ? "active"
+            : own.some((game) => game.status === "waiting") ? "waiting" : joinable.length ? "join" : "finished"));
+        setLoaded(true);
     };
 
 
@@ -82,6 +97,7 @@ function Home() {
 
     const handleCreateGame = async (event) => {
         event.preventDefault();
+        createPanel.current.open = true;
 
         setError("");
         setMessage("");
@@ -106,6 +122,7 @@ function Home() {
 
         } catch (error) {
             console.error(error);
+            createPanel.current.open = true;
             setError(backendError(error, "Hru se nepodařilo vytvořit."));
         }
     };
@@ -139,6 +156,7 @@ function Home() {
 
     const handleJoinByCode = async (event) => {
         event.preventDefault();
+        invitePanel.current.open = true;
         setError("");
         setMessage("");
         try {
@@ -152,29 +170,21 @@ function Home() {
     };
 
     return (
-        <div>
-            <h1>Diplomacy</h1>
-
-            <p>
-                Přihlášen jako: <strong>{user?.username}</strong>
-            </p>
-
-            <button onClick={logout}>
-                Odhlásit se
-            </button>
-
-            <hr />
-
-            <NotificationSettings key={user?.username} />
-
-            <h2>Vytvořit hru</h2>
-
+        <main className="home-page">
+            <header className="home-header">
+                <div><h1>Diplomacy</h1><p>Přihlášen jako: <strong>{user?.username}</strong></p></div>
+                <button type="button" onClick={logout}>Odhlásit se</button>
+            </header>
+            <div className="home-actions">
+                <details className="home-action-panel" ref={createPanel}>
+                    <summary>+ Vytvořit novou hru</summary>
             <form onSubmit={handleCreateGame}>
                 <div>
-                    <label>Název hry</label>
+                    <label htmlFor="game-name">Název hry</label>
                     <br />
 
                     <input
+                        id="game-name"
                         type="text"
                         value={name}
                         onChange={(event) =>
@@ -213,7 +223,9 @@ function Home() {
                 </button>
             </form>
 
-            <h2>Připojit se pomocí pozvánky</h2>
+                </details>
+                <details className="home-action-panel" ref={invitePanel}>
+                    <summary>Připojit se pomocí pozvánky</summary>
             <form onSubmit={handleJoinByCode}>
                 <label htmlFor="invite-code">Kód pozvánky</label>{" "}
                 <input id="invite-code" value={inviteCode} required
@@ -221,95 +233,40 @@ function Home() {
                 <button type="submit">Připojit se</button>
             </form>
 
-            {error && (
-                <p>{error}</p>
-            )}
-
-            {message && (
-                <p>{message}</p>
-            )}
-
-            <hr />
-
-            <h2>Moje hry</h2>
-
-            {games.length === 0 ? (
-                <p>Zatím nejsi v žádné hře.</p>
-            ) : (
-                <div>
-                    {games.map((game) => (
-                        <div key={game.id}>
-                            <h3>
-                                <Link to={`/games/${game.id}`}>
-                                    {game.name}
-                                </Link>
-                            </h3>
-
-
-
-                            <p>
-                                Zakladatel: {game.creator}
-                            </p>
-
-                            {game.status === "finished" ? <div className="finished-game-summary">
-                                <span className="finished-game-badge">✓ {game.result_type === "draw" ? "Dokončena — dohoda" : "Dokončena"}</span>
-                                {game.result_type === "draw" ? <p>Sdílené vítězství: {(game.draw_participants ?? []).map((p) => p.country_name || p.country).join(", ")}</p>
-                                    : game.winner && <p>Vítěz: <strong>{game.winner.country_name}</strong> — {game.winner.username}</p>}
-                            </div> : <p>Stav: {game.status}</p>}
-
-                            <GameSettingsSummary game={game} />
-
-                            <p>
-                                Hráči:
-                            </p>
-
-                            <ul>
-                                {game.players.map((player) => (
-                                    <li key={player.id}>
-                                        {player.username}
-                                    </li>
-                                ))}
-                            </ul>
-
-                            <hr />
-                        </div>
-                    ))}
+                </details>
+                <details className="home-action-panel">
+                    <summary>E-mailová upozornění</summary>
+                    <NotificationSettings key={user?.username} />
+                </details>
+            </div>
+            <div className="home-feedback">
+                {error && <p role="alert">{error}</p>}
+                {message && <p role="status">{message}</p>}
+            </div>
+            {!loaded ? <p role="status">Načítám hry…</p> : <>
+                <div className="game-tabs home-tabs" role="tablist" aria-label="Přehled her">
+                    {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" className="game-tab"
+                        id={`home-tab-${tab.id}`} aria-selected={selectedTab === tab.id} aria-controls={`home-panel-${tab.id}`}
+                        tabIndex={selectedTab === tab.id ? 0 : -1} onClick={() => setSelectedTab(tab.id)}
+                        onKeyDown={(event) => {
+                            const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+                                : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+                                : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+                            if (next === null) return;
+                            event.preventDefault();
+                            setSelectedTab(tabs[next].id);
+                            document.getElementById(`home-tab-${tabs[next].id}`).focus();
+                        }}>{tab.label} ({tab.games.length})</button>)}
                 </div>
-            )}
-
-            <h2>Veřejné hry</h2>
-
-            {publicGames.length === 0 ? (
-                <p>
-                    Momentálně nejsou žádné hry,
-                    ke kterým se můžeš připojit.
-                </p>
-            ) : (
-                <div>
-                    {publicGames.map((game) => (
-                        <div key={game.id}>
-                            <h3>{game.name}</h3>
-
-                            <p>
-                                Zakladatel: {game.creator}
-                            </p>
-
-                            <GameSettingsSummary game={game} />
-
-                            <button
-                                onClick={() =>
-                                    handleJoinGame(game.id)
-                                }
-                            >
-                                Připojit se
-                            </button>
-
-                            <hr />
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
+                {tabs.map((tab) => <section key={tab.id} className="game-tab-panel home-tab-panel" role="tabpanel"
+                    id={`home-panel-${tab.id}`} aria-labelledby={`home-tab-${tab.id}`} hidden={selectedTab !== tab.id} tabIndex={0}>
+                    {tab.games.length ? <div className="game-card-grid">
+                        {tab.games.map((game) => <HomeGameCard key={game.id} game={game} variant={tab.id}
+                            currentUsername={user?.username} onJoin={handleJoinGame} />)}
+                    </div> : <p className="home-empty-state">{tab.empty}</p>}
+                </section>)}
+            </>}
+        </main>
     );
 }
 

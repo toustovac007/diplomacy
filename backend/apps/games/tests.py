@@ -14,6 +14,7 @@ from apps.games.services.supply_centers import (
 from apps.maps.models import Province
 from apps.orders.models import Order
 from apps.orders.services.adjudication import resolve_movement_phase
+from .readiness_tests import ReadinessTests, ReadinessRaceTests
 
 
 class FallTransitionTests(APITestCase):

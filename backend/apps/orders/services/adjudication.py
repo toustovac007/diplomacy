@@ -1,3 +1,4 @@
+from apps.games.services.phase_lock import lock_phase
 from collections import defaultdict
 
 from django.db import transaction
@@ -487,14 +488,9 @@ def _resolve_convoys(units, orders):
 
 @transaction.atomic
 def resolve_movement_phase(phase):
-    phase = (
-        GamePhase.objects
-        .select_for_update()
-        .select_related("game")
-        .get(pk=phase.pk)
-    )
+    phase = lock_phase(phase)
 
-    if phase.status != "open":
+    if phase.status != "open" or phase.game.status != "active":
         raise AdjudicationError(
             "Tato fáze už byla vyhodnocena."
         )

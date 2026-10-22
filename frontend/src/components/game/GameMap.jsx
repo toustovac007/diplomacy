@@ -219,6 +219,7 @@ function drawHold(layer, position, color = "#111827") {
 }
 
 function GameMap({
+    focusMode = false,
     phaseType = "movement",
     buildableCenters = [],
     units = [],
@@ -226,6 +227,7 @@ function GameMap({
     orders = [],
     historicalOrders = [],
     showHistoricalOrders = false,
+    ordersLocked = false,
     supplyCenters = [],
 
     selectedUnit = null,
@@ -246,6 +248,8 @@ function GameMap({
     const containerRef = useRef(null);
 
     const [svgMarkup, setSvgMarkup] = useState("");
+    // Presentation-only renders must not replace the imperative SVG subtree.
+    const svgContent = useMemo(() => ({ __html: svgMarkup }), [svgMarkup]);
     const [unitPositions, setUnitPositions] = useState({});
     const [loadError, setLoadError] = useState("");
 
@@ -331,10 +335,8 @@ function GameMap({
                 root.removeAttribute("width");
                 root.removeAttribute("height");
 
-                root.setAttribute(
-                    "style",
-                    "width:100%;height:auto;display:block;"
-                );
+                root.removeAttribute("style");
+                root.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
                 const positions = {};
 
@@ -766,7 +768,7 @@ function GameMap({
                 group.appendChild(title);
             }
 
-            if (phaseType === "retreat" && !showHistoricalOrders) {
+            if (phaseType === "retreat" && !showHistoricalOrders && !ordersLocked) {
                 const canSelect = unit.is_dislodged && myUnitIds.has(unit.id);
                 // Override the unit layer's pointer-events="none". All markers
                 // consume clicks so an occupant cannot select a defender beneath it.
@@ -884,7 +886,7 @@ function GameMap({
             ? buildableCenters.find((center) => center.code === selectedTarget)
             : null;
         if (
-            !showHistoricalOrders && ((buildCenter && coastSelection?.mode !== "build") ||
+            !showHistoricalOrders && !ordersLocked && ((buildCenter && coastSelection?.mode !== "build") ||
             (selectedUnit &&
             (phaseType !== "retreat" || selectedUnit.is_dislodged) &&
             myUnitIds.has(
@@ -1171,7 +1173,7 @@ function GameMap({
 
 
 if (
-    !showHistoricalOrders && draftOrderType === "support-mode" &&
+    !showHistoricalOrders && !ordersLocked && draftOrderType === "support-mode" &&
     supportedUnit
 ) {
     const position =
@@ -1331,7 +1333,7 @@ if (
 }
 
 
-if (coastSelection && !showHistoricalOrders) {
+if (coastSelection && !showHistoricalOrders && !ordersLocked) {
     const position =
         unitPositions[
             coastSelection
@@ -1589,7 +1591,7 @@ if (coastSelection && !showHistoricalOrders) {
                     "all";
 
                 shape.style.cursor =
-                    showHistoricalOrders ? "default" : "pointer";
+                    showHistoricalOrders || ordersLocked ? "default" : "pointer";
             }
 
             mouseLayer.style.pointerEvents =
@@ -1598,7 +1600,7 @@ if (coastSelection && !showHistoricalOrders) {
             mouseLayerListener = (
                 event
             ) => {
-                if (showHistoricalOrders) return;
+                if (showHistoricalOrders || ordersLocked) return;
                 let current =
                     event.target;
 
@@ -1701,6 +1703,7 @@ if (coastSelection && !showHistoricalOrders) {
         phaseType,
         historicalOrders,
         showHistoricalOrders,
+        ordersLocked,
         buildableCenters,
         svgMarkup,
         unitPositions,
@@ -1726,8 +1729,8 @@ if (coastSelection && !showHistoricalOrders) {
 
     if (loadError) {
         return (
-            <div>
-                <h3>Mapa</h3>
+            <section className={`game-map${focusMode ? " game-map--focus" : ""}`}>
+                {!focusMode && <h3>Mapa</h3>}
 
                 <p>{loadError}</p>
 
@@ -1737,13 +1740,13 @@ if (coastSelection && !showHistoricalOrders) {
                         frontend/public/maps/standard.svg
                     </code>
                 </p>
-            </div>
+            </section>
         );
     }
 
     return (
-        <section>
-            <h3>Mapa</h3>
+        <section className={`game-map${focusMode ? " game-map--focus" : ""}`}>
+            {!focusMode && <h3>Mapa</h3>}
 
             {!svgMarkup && (
                 <p>Načítání mapy...</p>
@@ -1751,17 +1754,8 @@ if (coastSelection && !showHistoricalOrders) {
 
             <div
                 ref={containerRef}
-                style={{
-                    width: "100%",
-                    maxWidth: "1100px",
-                    margin: "0 auto",
-                    border: "1px solid #aaa",
-                    overflow: "hidden",
-                    background: "#c5dfea",
-                }}
-                dangerouslySetInnerHTML={{
-                    __html: svgMarkup,
-                }}
+                className="game-map-canvas"
+                dangerouslySetInnerHTML={svgContent}
             >
             </div>
         </section>
