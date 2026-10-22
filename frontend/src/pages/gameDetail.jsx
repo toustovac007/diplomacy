@@ -857,16 +857,75 @@ const handleCoastSelect = async (coastCode) => {
         event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next].focus();
     };
 
+    const mapFeedback = (
+        <>
+        {(draftOrderType === "move" || draftOrderType === "retreat") && (
+            <p>
+                Klikni na cílovou provincii.
+            </p>
+        )}
+
+        {draftOrderType === "convoy-unit" && <p>Klikni na armádu, kterou chceš konvojovat.</p>}
+        {(draftOrderType === "convoy-target" || draftOrderType === "move-convoy") &&
+            <p>Klikni na cílovou pobřežní provincii konvoje.</p>}
+        {convoyedUnit && <p>Konvojovaná armáda (tyrkysové označení): {convoyedUnit.province_name} — {convoyedUnit.country_name}</p>}
+
+        {draftOrderType === "support-unit" && (
+            <p>
+                Klikni na jednotku, kterou chceš podporovat.
+            </p>
+        )}
+
+        {draftOrderType === "support-target" && (
+            <p>
+                Klikni na cílovou provincii podporovaného pohybu.
+            </p>
+        )}
+
+        {mapOrderError && (
+            <p className="map-feedback-error" role="alert">
+                {mapOrderError}
+            </p>
+        )}
+
+        {mapOrderMessage && (
+            <p className="map-feedback-success" role="status">
+                {mapOrderMessage}
+            </p>
+        )}
+
+
+        {selectedUnit && (
+            <p>
+                Vybraná jednotka:{" "}
+                <strong>
+                    {selectedUnit.unit_type === "army"
+                        ? "A"
+                        : "F"}{" "}
+                    {selectedUnit.province_name}
+                </strong>
+            </p>
+        )}
+
+        {mapTarget && (
+            <p>
+                Vybraný cíl:{" "}
+                <strong>{mapTarget}</strong>
+            </p>
+        )}
+        </>
+    );
+
     return (
         <div ref={pageRef} className={`game-detail-page${focusMode ? " focus-mode" : ""}`}
             role={focusMode ? "dialog" : undefined} aria-modal={focusMode ? true : undefined}
             aria-label={focusMode ? "Herní režim" : undefined} tabIndex={focusMode ? undefined : -1}>
             <div className="focus-toolbar" hidden={!focusMode}>
-                <div><strong>{game.name}{currentPlayer?.country_name && " · " + currentPlayer.country_name}</strong>
+                <div><div className="focus-title"><strong title={game.name}>{game.name}</strong>{currentPlayer?.country_name && <span>{currentPlayer.country_name}</span>}</div>
                     {game.current_phase && <span>{game.current_phase.season_name} {game.current_phase.year} — {game.current_phase.phase_type_name}
                         {game.current_phase.deadline && " · Deadline: " + new Date(game.current_phase.deadline).toLocaleString("cs-CZ")}</span>}
                     {readiness?.phase?.id === game.current_phase?.id && readiness?.readiness_supported &&
-                        <span>Připraveno: {readiness.ready_count} / {readiness.required_count}{readiness.is_ready && " · ✓ Hotovo"}</span>}
+                        <span className="focus-ready"> · Připraveno: {readiness.ready_count} / {readiness.required_count}{readiness.is_ready && " · ✓ Hotovo"}</span>}
                 </div>
                 <div className="focus-mobile-switch" hidden={!narrowFocus} aria-label="Zobrazení herního režimu">
                     <button type="button" aria-pressed={focusPane === "map"} onClick={() => setFocusPane("map")}>Mapa</button>
@@ -1127,68 +1186,13 @@ const handleCoastSelect = async (coastCode) => {
                             />
 
 
-                            {(draftOrderType === "move" || draftOrderType === "retreat") && (
-                                <p>
-                                    Klikni na cílovou provincii.
-                                </p>
-                            )}
-
-                            {draftOrderType === "convoy-unit" && <p>Klikni na armádu, kterou chceš konvojovat.</p>}
-                            {(draftOrderType === "convoy-target" || draftOrderType === "move-convoy") &&
-                                <p>Klikni na cílovou pobřežní provincii konvoje.</p>}
-                            {convoyedUnit && <p>Konvojovaná armáda (tyrkysové označení): {convoyedUnit.province_name} — {convoyedUnit.country_name}</p>}
-
-                            {draftOrderType === "support-unit" && (
-                                <p>
-                                    Klikni na jednotku, kterou chceš podporovat.
-                                </p>
-                            )}
-
-                            {draftOrderType === "support-target" && (
-                                <p>
-                                    Klikni na cílovou provincii podporovaného pohybu.
-                                </p>
-                            )}
-
-                            {mapOrderError && (
-                                <p>
-                                    {mapOrderError}
-                                </p>
-                            )}
-
-                            {mapOrderMessage && (
-                                <p>
-                                    {mapOrderMessage}
-                                </p>
-                            )}
-
-
-                            {selectedUnit && (
-                                <p>
-                                    Vybraná jednotka:{" "}
-                                    <strong>
-                                        {selectedUnit.unit_type === "army"
-                                            ? "A"
-                                            : "F"}{" "}
-                                        {selectedUnit.province_name}
-                                    </strong>
-                                </p>
-                            )}
-
-                            {mapTarget && (
-                                <p>
-                                    Vybraný cíl:{" "}
-                                    <strong>{mapTarget}</strong>
-                                </p>
-                            )}
-
-
-
-
+                            {!focusMode && mapFeedback}
                             </div>
+                            <div className="game-secondary-panels" hidden={focusMode}>
                             {game.current_phase?.phase_type === "movement" && (
-                                <>
-                                    <h3>Rozkazy</h3>
+                                <details className="game-secondary-panel game-manual-orders">
+                                    <summary>Ruční zadávání rozkazů ({myUnits.length})</summary>
+                                    <p>Alternativní textové zadávání rozkazů.</p>
 
                                     {ordersLoading ? (
                                         <p>Načítání rozkazů...</p>
@@ -1212,10 +1216,10 @@ const handleCoastSelect = async (coastCode) => {
                                             );
                                         })
                                     )}
-                                </>
+                                </details>
                             )}
 
-                                <details className="game-unit-details"><summary>Všechny jednotky</summary>
+                                <details className="game-secondary-panel game-all-units"><summary>Všechny jednotky</summary>
 
                                 <ul>
                                     {game.units.map((unit) => (
@@ -1244,6 +1248,7 @@ const handleCoastSelect = async (coastCode) => {
 
 
                                 </details>
+                            </div>
 
                         </div>
                     ) : (
@@ -1254,6 +1259,7 @@ const handleCoastSelect = async (coastCode) => {
                 </>
             )}
             </section>}
+            {focusMode && <aside className={`focus-status-panel${narrowFocus && focusPane === "map" ? " focus-status-overlay" : ""}`} aria-label="Stav a instrukce">{mapFeedback}</aside>}
             {hasTabs && currentPlayer && <section className="game-tab-panel" role="tabpanel" id="game-panel-diplomacy"
                 aria-labelledby={focusMode ? undefined : "game-tab-diplomacy"} aria-label={focusMode ? "Diplomacie" : undefined} hidden={!chatVisible} tabIndex={focusMode ? -1 : 0}>
                 <GameChat key={"chat:" + game.id + ":" + currentPlayer.id} game={game} currentPlayer={currentPlayer}

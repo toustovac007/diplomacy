@@ -9,7 +9,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const PROVINCE_CODES = [
     "ADR", "AEG", "ALB", "ANK", "APU", "ARM", "BAL", "BAR", "BEL", "BER",
     "BLA", "BOH", "BOT", "BRE", "BUD", "BUL", "BUR", "CLY", "CON", "DEN",
-    "EAS", "EDI", "ENG", "FIN", "GAL", "GAS", "GOL", "GRE", "HEL", "HOL",
+    "EAS", "EDI", "ENG", "FIN", "GAL", "GAS", "LYO", "GRE", "HEL", "HOL",
     "ION", "IRI", "KIE", "LON", "LVN", "LVP", "MAO", "MAR", "MOS", "MUN",
     "NAF", "NAP", "NAO", "NTH", "NWG", "NWY", "PAR", "PIC", "PIE", "POR",
     "PRU", "ROM", "RUH", "RUM", "SER", "SEV", "SIL", "SKA", "SMY", "SPA",
@@ -20,6 +20,7 @@ const PROVINCE_CODES = [
 const PROVINCE_CODE_SET = new Set(PROVINCE_CODES);
 
 const SVG_BASE_IDS = {
+    LYO: ["lyo", "gol"],
     MAO: ["mao", "mid"],
     NAO: ["nao", "nat"],
     NWG: ["nwg", "nrg"],
@@ -27,6 +28,8 @@ const SVG_BASE_IDS = {
 };
 
 const SVG_ID_TO_GAME_CODE = {
+    lyo: "LYO",
+    gol: "LYO",
     mid: "MAO",
     mao: "MAO",
     nat: "NAO",

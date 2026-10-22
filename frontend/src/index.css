@@ -215,21 +215,41 @@ code {
 .game-map-canvas { width: 100%; max-width: 1100px; margin: 0 auto; border: 1px solid #aaa; overflow: hidden; background: #c5dfea; }
 .game-map-canvas > svg { width: 100%; height: auto; display: block; }
 .focus-toolbar[hidden], .focus-mobile-switch[hidden], .focus-map-area[hidden] { display: none; }
-.game-detail-page.focus-mode { position: fixed; inset: 0; z-index: 100; height: 100dvh; box-sizing: border-box; padding: 0; background: var(--bg); display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 26vw); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
-.focus-mode > :not(.focus-toolbar):not(#game-panel-game):not(#game-panel-diplomacy) { display: none; }
-.focus-mode .focus-toolbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
-.focus-toolbar > div:first-child { min-width: 0; overflow-wrap: anywhere; }
-.focus-toolbar span { display: block; font-size: .75rem; line-height: 1.4; }
-.focus-toolbar button { padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.game-secondary-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; margin-top: 16px; min-width: 0; }
+.game-secondary-panels[hidden] { display: none; }
+.game-secondary-panels > :only-child { grid-column: 1 / -1; }
+.game-unit-details { margin: 16px 0; padding: 12px 0; border-block: 1px solid var(--border); }
+.game-secondary-panel { min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); overflow-wrap: anywhere; padding: 0 12px; }
+.game-secondary-panel > summary { margin: 0 -12px; padding: 12px; cursor: pointer; font-weight: 600; color: var(--text-h); }
+.game-secondary-panel[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.game-secondary-panel fieldset { min-width: 0; }
+.game-secondary-panel input, .game-secondary-panel select { max-width: 100%; box-sizing: border-box; }
+.game-manual-orders > p { font-size: .85rem; color: var(--text); }
+@media (max-width: 800px) {
+  .game-secondary-panels { grid-template-columns: minmax(0, 1fr); }
+}
+.game-detail-page.focus-mode { --focus-chat-width: max(300px, 24vw); position: fixed; inset: 0; z-index: 100; height: 100dvh; box-sizing: border-box; padding: 0; background: var(--bg); display: grid; grid-template-columns: minmax(0, 1fr) var(--focus-chat-width); grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
+.focus-mode > :not(.focus-toolbar):not(#game-panel-game):not(#game-panel-diplomacy):not(.focus-status-panel) { display: none; }
+.focus-mode .focus-toolbar { position: absolute; top: 0; left: 0; right: var(--focus-chat-width); z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; background: var(--bg); border-bottom: 1px solid var(--border); }
+.focus-toolbar > div:first-child { min-width: 0; flex: 1; }
+.focus-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.focus-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.focus-title span { flex-shrink: 0; }
+.focus-toolbar span { font-size: .75rem; line-height: 1.4; }
+.focus-toolbar button { padding: 6px 8px; cursor: pointer; flex-shrink: 0; }
 .focus-mode #game-panel-game, .focus-mode .active-game-content { display: contents; }
 .focus-mode .active-game-content > :not(.focus-map-area) { display: none; }
-.focus-mode .focus-map-area { grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 8px; }
+.focus-mode .focus-map-area { grid-column: 1; grid-row: 1 / 3; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .focus-mode .focus-map-area[hidden] { display: none; }
-.focus-mode .focus-map-area > p { margin: 2px 0; font-size: .75rem; flex-shrink: 0; }
+.focus-status-panel { grid-column: 2; grid-row: 2; min-width: 0; max-height: 28dvh; overflow-y: auto; overflow-wrap: anywhere; box-sizing: border-box; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg); text-align: left; }
+.focus-status-panel:empty { padding: 0; border: 0; }
+.focus-status-panel p { margin: 4px 0; font-size: .85rem; }
+.focus-status-panel .map-feedback-error { color: #b91c1c; border-left: 3px solid currentColor; padding-left: 8px; font-weight: 600; }
+.focus-status-panel .map-feedback-success { color: #15803d; border-left: 3px solid currentColor; padding-left: 8px; }
 .game-map--focus { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .game-map--focus .game-map-canvas { flex: 1; height: 100%; min-height: 0; min-width: 0; max-width: none; box-sizing: border-box; }
 .game-map--focus .game-map-canvas > svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; }
-.focus-mode #game-panel-diplomacy { grid-column: 2; grid-row: 2; min-height: 0; min-width: 0; border-left: 1px solid var(--border); overflow: hidden; }
+.focus-mode #game-panel-diplomacy { grid-column: 2; grid-row: 1; min-height: 0; min-width: 0; border-left: 1px solid var(--border); overflow: hidden; }
 .focus-mode .game-chat { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; margin: 0; padding: 12px; border: 0; border-radius: 0; }
 .focus-mode .game-chat h2 { font-size: 1rem; margin: 0 0 8px; }
 .focus-mode .chat-layout { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
@@ -242,10 +262,18 @@ code {
 .focus-mode .chat-compose textarea { max-height: 20dvh; }
 .focus-mobile-switch { display: flex; gap: 4px; }
 .focus-mobile-switch button[aria-pressed="true"] { outline: 2px solid var(--text-h); outline-offset: -2px; }
+/* Scale the whole SVG, including hit targets, without changing board coordinates. */
+@media (min-width: 851px) {
+  .game-map--focus .game-map-canvas > svg { transform: scale(1.04); transform-origin: center; }
+}
 @media (max-width: 850px) {
-  .game-detail-page.focus-mode { grid-template-columns: minmax(0, 1fr); }
-  .focus-mode #game-panel-diplomacy { grid-column: 1; border-left: 0; }
-  .focus-mode .focus-toolbar { flex-wrap: wrap; gap: 8px; padding: 8px; }
+  .game-detail-page.focus-mode { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+  .focus-mode #game-panel-diplomacy { grid-column: 1; grid-row: 2; border-left: 0; }
+  .focus-mode .focus-map-area { grid-row: 2 / 4; }
+  .focus-status-panel { grid-column: 1; grid-row: 3; }
+  .focus-status-overlay { position: absolute; bottom: 8px; left: 8px; right: 8px; z-index: 1; border: 1px solid var(--border); border-radius: 6px; }
+  .focus-status-overlay:empty { display: none; }
+  .focus-mode .focus-toolbar { position: static; grid-row: 1; flex-wrap: wrap; gap: 8px; padding: 8px; }
   .focus-toolbar > div:first-child { flex-basis: 100%; }
 }
 .home-page { padding: clamp(12px, 3vw, 28px); text-align: left; min-width: 0; }
@@ -280,7 +308,6 @@ code {
 .game-phase-card h2 { margin: 0 0 12px; font-size: 1.3rem; }
 .game-phase-card p { margin: 6px 0; }
 .game-phase-card button { padding: 8px 12px; margin-top: 10px; }
-.game-unit-details { margin: 16px 0; padding: 12px 0; border-block: 1px solid var(--border); }
 .game-tab-panel > .game-chat, .game-tab-panel .draw-panel { margin-inline: 0; }
 .game-tab-panel > .victory-screen { margin: 0; }
 .tab-badge { display: inline-block; min-width: 1.4em; padding: 0 5px; margin-left: 8px; border-radius: 12px; background: var(--border); color: var(--text-h); font-size: .75rem; text-align: center; }
