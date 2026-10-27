@@ -316,3 +316,6 @@ code {
   .game-tab { padding: 10px 12px; }
   .game-phase-card { padding: 14px; }
 }
+.social-login button { margin: 4px; padding: 8px 12px; }
+.account-login { margin-block: 12px; }
+.account-login summary { cursor: pointer; }

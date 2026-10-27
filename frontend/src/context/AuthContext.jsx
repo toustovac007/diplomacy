@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import api from "../services/api";
+import api, { clearSession, getSessionVersion, startSession, revokeSession } from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         const loadUser = async () => {
             const token = sessionStorage.getItem("access_token");
-            const refreshToken = sessionStorage.getItem("refresh_token");
+            const version = getSessionVersion();
 
             if (!token) {
                 setLoading(false);
@@ -19,15 +19,14 @@ export function AuthProvider({ children }) {
 
             try {
                 const response = await api.get("users/me/");
-                if (sessionStorage.getItem("refresh_token") === refreshToken) {
+                if (getSessionVersion() === version) {
                     setUser(response.data);
                 }
             } catch (error) {
-                console.error("Nepodařilo se načíst uživatele:", error);
+                console.error("User lookup failed", error.response?.status);
 
-                if (sessionStorage.getItem("refresh_token") === refreshToken) {
-                    sessionStorage.removeItem("access_token");
-                    sessionStorage.removeItem("refresh_token");
+                if (getSessionVersion() === version) {
+                    clearSession();
                     setUser(null);
                 }
             } finally {
@@ -35,7 +34,10 @@ export function AuthProvider({ children }) {
             }
         };
 
+        const onCleared = () => setUser(null);
+        window.addEventListener("auth-cleared", onCleared);
         loadUser();
+        return () => window.removeEventListener("auth-cleared", onCleared);
     }, []);
 
     const login = async (username, password) => {
@@ -44,22 +46,28 @@ export function AuthProvider({ children }) {
             password,
         });
 
-        const { access, refresh } = response.data;
+        return finishLogin(response.data);
+    };
 
+    const completeOAuthLogin = async (ticket) => {
+        const response = await api.post("users/oauth/exchange/", { ticket }, { withCredentials: true });
+        return finishLogin(response.data);
+    };
+
+    const finishLogin = async ({ access, refresh }) => {
         setUser(null);
-        sessionStorage.setItem("access_token", access);
-        sessionStorage.setItem("refresh_token", refresh);
+        startSession({ access, refresh });
+        const version = getSessionVersion();
 
         try {
             const userResponse = await api.get("users/me/");
-            if (sessionStorage.getItem("refresh_token") === refresh) {
+            if (getSessionVersion() === version) {
                 setUser(userResponse.data);
             }
             return userResponse.data;
         } catch (error) {
-            if (sessionStorage.getItem("refresh_token") === refresh) {
-                sessionStorage.removeItem("access_token");
-                sessionStorage.removeItem("refresh_token");
+            if (getSessionVersion() === version) {
+                clearSession();
                 setUser(null);
             }
             throw error;
@@ -77,16 +85,14 @@ export function AuthProvider({ children }) {
         return await login(username, password);
     };
 
-    const logout = () => {
-        sessionStorage.removeItem("access_token");
-        sessionStorage.removeItem("refresh_token");
-
+    const logout = async () => {
         setUser(null);
+        await revokeSession();
     };
 
     return (
         <AuthContext.Provider
-            value={{ user, login, register, logout, loading }}
+            value={{ user, login, completeOAuthLogin, register, logout, loading }}
         >
             {children}
         </AuthContext.Provider>

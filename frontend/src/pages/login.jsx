@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import SocialLogin from "../components/SocialLogin";
 
 function Login({ onRegisterClick }) {
     const { login } = useAuth();
@@ -15,7 +16,7 @@ function Login({ onRegisterClick }) {
         try {
             await login(username, password);
         } catch (error) {
-            console.error(error);
+            console.error("Authentication request failed", error.response?.status);
 
             if (error.response?.status === 401) {
                 setError("Nesprávné uživatelské jméno nebo heslo.");
@@ -57,6 +58,7 @@ function Login({ onRegisterClick }) {
             </form>
 
             {error && <p>{error}</p>}
+            <SocialLogin />
 
              <p>Nemáš ještě účet?</p>
 

@@ -12,6 +12,10 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+from datetime import timedelta
+from urllib.parse import urlsplit
+from django.core.exceptions import ImproperlyConfigured
+from config.environment import env_bool, env_list
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,19 +24,30 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-kf(0w3ucgfn==x#vn_b6l1h(54eek81+s5l_tshay@@&ok&6ai'
+# Never reuse the previously committed signing key, even in development.
+DEBUG = env_bool("DJANGO_DEBUG") if "DJANGO_DEBUG" in os.environ else env_bool("DEBUG", True)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY is required when DJANGO_DEBUG=false")
+    SECRET_KEY = "development-only-insecure-key-never-use-in-production"
+if not DEBUG and (SECRET_KEY == "change-me" or SECRET_KEY.startswith("development-only")):
+    raise ImproperlyConfigured("Configure a real production DJANGO_SECRET_KEY")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DEBUG", "true").strip().lower() in ("1", "true", "yes", "on")
+ALLOW_MANUAL_PHASE_RESOLVE = env_bool("ALLOW_MANUAL_PHASE_RESOLVE", DEBUG)
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]" if DEBUG else "")
+if not DEBUG and (not ALLOWED_HOSTS or any("*" in host for host in ALLOWED_HOSTS)):
+    raise ImproperlyConfigured("Production requires explicit DJANGO_ALLOWED_HOSTS without wildcards")
 
-# Explicit opt-in outside development; unknown environment values fail closed.
-ALLOW_MANUAL_PHASE_RESOLVE = os.environ.get(
-    "ALLOW_MANUAL_PHASE_RESOLVE", "true" if DEBUG else "false"
-).strip().lower() in ("1", "true", "yes", "on")
-
-ALLOWED_HOSTS = []
-
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "0" if DEBUG else "31536000"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = False
+if env_bool("DJANGO_TRUST_X_FORWARDED_PROTO", False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Django 6 defaults: DENY frames, nosniff, same-origin COOP and Referrer-Policy.
 
 # Application definition
 
@@ -46,6 +61,7 @@ INSTALLED_APPS = [
 
     # API
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
 
     # vlastní aplikace
@@ -146,21 +162,77 @@ MEDIA_ROOT = BASE_DIR / "media"
 AUTH_USER_MODEL = "users.User"
 
 REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "NUM_PROXIES": 0,  # Ignore untrusted X-Forwarded-For for auth throttling.
+    "DEFAULT_THROTTLE_RATES": {"login": "10/min", "register": "5/hour", "refresh": "30/min",
+                               "oauth_start": "20/hour", "oauth_exchange": "30/min"},
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-]
+CORS_ALLOWED_ORIGINS = env_list("DJANGO_CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173" if DEBUG else "")
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = False
+for origin in CORS_ALLOWED_ORIGINS + CSRF_TRUSTED_ORIGINS:
+    parsed = urlsplit(origin)
+    if "*" in origin or not parsed.netloc or parsed.scheme not in ({"http", "https"} if DEBUG else {"https"}):
+        raise ImproperlyConfigured("CORS/CSRF origins must be explicit origins (HTTPS in production)")
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+}
 
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() in ("1", "true", "yes")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "diplomacie@localhost")
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "").strip()
+
+if not DEBUG:
+    frontend_url = urlsplit(FRONTEND_BASE_URL)
+    if frontend_url.scheme != "https" or not frontend_url.netloc or frontend_url.hostname in {"localhost", "127.0.0.1", "::1"}:
+        raise ImproperlyConfigured("FRONTEND_BASE_URL must be a production HTTPS URL")
+
+OAUTH_FRONTEND_URL = (FRONTEND_BASE_URL or "http://127.0.0.1:5173").rstrip("/")
+OAUTH_PROVIDERS = {}
+for provider in ("google", "github"):
+    prefix = provider.upper() + "_OAUTH_"
+    config = {key: os.environ.get(prefix + key.upper(), "").strip()
+              for key in ("client_id", "client_secret", "redirect_uri")}
+    if config["redirect_uri"]:
+        uri = urlsplit(config["redirect_uri"])
+        if (uri.scheme not in ({"http", "https"} if DEBUG else {"https"}) or not uri.netloc
+                or uri.query or uri.fragment or uri.username
+                or uri.path != f"/api/users/oauth/{provider}/callback/"):
+            raise ImproperlyConfigured("OAuth redirect URI must be an explicit callback URL (HTTPS in production)")
+    OAUTH_PROVIDERS[provider] = config
+# Only transient OAuth binding cookies use credentialed CORS; JWTs stay in sessionStorage.
+CORS_ALLOW_CREDENTIALS = any(all(config.values()) for config in OAUTH_PROVIDERS.values())
+if CORS_ALLOW_CREDENTIALS:
+    uri = urlsplit(OAUTH_FRONTEND_URL)
+    if uri.scheme not in ({"http", "https"} if DEBUG else {"https"}) or not uri.netloc or uri.query or uri.fragment or uri.username or uri.path:
+        raise ImproperlyConfigured("OAuth FRONTEND_BASE_URL must be an explicit frontend origin")
+
+# Authlib debug logs contain protocol secrets. Callback query strings must also
+# never reach Django access logs. Reverse proxy/hosting logs need the same policy.
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "filters": {"oauth_privacy": {"()": "apps.users.oauth_logging.OAuthPrivacyFilter"}},
+    "handlers": {"oauth_safe_console": {"class": "logging.StreamHandler", "filters": ["oauth_privacy"]},
+                 "oauth_null": {"class": "logging.NullHandler"}},
+    "loggers": {
+        "authlib": {"handlers": ["oauth_null"], "propagate": False},
+        "urllib3": {"handlers": ["oauth_null"], "propagate": False},
+        "django.server": {"handlers": ["oauth_safe_console"], "propagate": False},
+        "django.request": {"handlers": ["oauth_safe_console"], "propagate": False},
+    },
+}

@@ -167,7 +167,7 @@ useEffect(() => {
 
 
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
 
             const backendData =
                 error.response?.data;

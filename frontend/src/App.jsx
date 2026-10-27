@@ -5,11 +5,12 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
 import GameDetail from "./pages/GameDetail";
+import OAuthCallback from "./pages/OAuthCallback";
 
 import { useAuth } from "./context/AuthContext";
 
 
-function App() {
+function AuthenticatedApp() {
     const { user, loading } = useAuth();
 
     const [showRegister, setShowRegister] = useState(false);
@@ -67,4 +68,9 @@ function App() {
 }
 
 
-export default App;
+export default function App() {
+    return <Routes>
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="*" element={<AuthenticatedApp />} />
+    </Routes>;
+}

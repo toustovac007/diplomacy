@@ -27,7 +27,7 @@ function Register({ onBackToLogin }) {
         try {
             await register(username, email, password);
         } catch (error) {
-            console.error(error);
+            console.error("Authentication request failed", error.response?.status);
 
             if (error.response?.data?.username) {
                 setError("Toto uživatelské jméno už existuje.");

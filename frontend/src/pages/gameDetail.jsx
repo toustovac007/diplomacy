@@ -175,7 +175,7 @@ function GameDetail() {
             }
             setGame(response.data);
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
 
             if (error.response?.status === 404) {
                 setError(
@@ -213,7 +213,7 @@ function GameDetail() {
             setMapOrderError("Nepodařilo se načíst rozkazy.");
             console.error(
                 "Nepodařilo se načíst rozkazy:",
-                error
+                error.response?.status
             );
 
         } finally {
@@ -293,7 +293,7 @@ function GameDetail() {
             }
 
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
 
             const backendData =
                 error.response?.data;
@@ -739,7 +739,7 @@ const handleCoastSelect = async (coastCode) => {
             setMessage("Hra byla spuštěna.");
 
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
 
             const backendMessage =
                 error.response?.data?.detail;

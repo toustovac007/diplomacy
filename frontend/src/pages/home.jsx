@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import HomeGameCard from "../components/game/HomeGameCard";
 import NotificationSettings from "../components/NotificationSettings";
+import AccountLogin from "../components/AccountLogin";
 
 const defaultSettings = {
     max_players: 7,
@@ -64,7 +65,7 @@ function Home() {
             setGames(response.data);
             return response.data;
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
             setError("Nepodařilo se načíst tvoje hry.");
         }
     };
@@ -76,7 +77,7 @@ function Home() {
             setPublicGames(response.data);
             return response.data;
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
             setError("Nepodařilo se načíst veřejné hry.");
         }
     };
@@ -121,7 +122,7 @@ function Home() {
             await loadAllGames();
 
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
             createPanel.current.open = true;
             setError(backendError(error, "Hru se nepodařilo vytvořit."));
         }
@@ -140,7 +141,7 @@ function Home() {
             await loadAllGames();
 
         } catch (error) {
-            console.error(error);
+            console.error("API request failed", error.response?.status);
 
             const backendMessage =
                 error.response?.data?.detail;
@@ -237,6 +238,7 @@ function Home() {
                 <details className="home-action-panel">
                     <summary>E-mailová upozornění</summary>
                     <NotificationSettings key={user?.username} />
+                    <AccountLogin key={`account-${user?.username}`} />
                 </details>
             </div>
             <div className="home-feedback">
