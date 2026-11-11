@@ -1,0 +1,7 @@
+{% autoescape off %}{{ heading }}
+Hra: {{ game_name }}
+
+{% for line in lines %}{{ line }}
+
+{% endfor %}{% if game_url %}Otevřít hru: {{ game_url }}
+{% endif %}{% endautoescape %}

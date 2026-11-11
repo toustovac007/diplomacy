@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="cs"><body>
+<h1>{{ heading }}</h1>
+<p><strong>Hra:</strong> {{ game_name }}</p>
+{% for line in lines %}<p style="white-space: pre-wrap; overflow-wrap: anywhere">{{ line }}</p>{% endfor %}
+{% if game_url %}<p><a href="{{ game_url }}">Otevřít hru</a></p>{% endif %}
+</body></html>
