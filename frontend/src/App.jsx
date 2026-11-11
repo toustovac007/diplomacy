@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Home from "./pages/Home";
-import GameDetail from "./pages/GameDetail";
+import Login from "./pages/login";
+import Register from "./pages/register";
+import Home from "./pages/home";
+import GameDetail from "./pages/gameDetail";
 import OAuthCallback from "./pages/OAuthCallback";
 
 import { useAuth } from "./context/AuthContext";

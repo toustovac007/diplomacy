@@ -15,7 +15,7 @@ import os
 from datetime import timedelta
 from urllib.parse import urlsplit
 from django.core.exceptions import ImproperlyConfigured
-from config.environment import env_bool, env_list
+from config.environment import env_bool, env_list, env_int
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -76,6 +76,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -107,12 +108,26 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+postgres_keys = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_HOST",
+                 "POSTGRES_PORT", "POSTGRES_CONN_MAX_AGE")
+if any(os.environ.get(key, "").strip() for key in postgres_keys):
+    missing = [key for key in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
+               if not os.environ.get(key, "").strip()]
+    if missing:
+        raise ImproperlyConfigured("Incomplete PostgreSQL configuration: required " + ", ".join(missing))
+    DATABASES = {"default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ["POSTGRES_DB"].strip(),
+        "USER": os.environ["POSTGRES_USER"].strip(),
+        "PASSWORD": os.environ["POSTGRES_PASSWORD"],
+        "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1").strip() or "127.0.0.1",
+        "PORT": env_int("POSTGRES_PORT", 5432, minimum=1, maximum=65535),
+        "CONN_MAX_AGE": env_int("POSTGRES_CONN_MAX_AGE", 0),
+    }}
+elif DEBUG:
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+else:
+    raise ImproperlyConfigured("PostgreSQL configuration is required when DJANGO_DEBUG=false")
 
 
 # Password validation
@@ -150,6 +165,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 STATICFILES_DIRS = [
     BASE_DIR / "static",

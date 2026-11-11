@@ -504,7 +504,7 @@ def resolve_movement_phase(phase):
 
     units = list(
         Unit.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(
             game=game,
             is_dislodged=False,
@@ -542,7 +542,7 @@ def resolve_movement_phase(phase):
 
     orders = list(
         Order.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(phase=phase)
         .select_related(
             "unit",

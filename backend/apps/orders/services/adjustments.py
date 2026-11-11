@@ -202,7 +202,7 @@ def resolve_adjustment_phase(
 
     orders = list(
         AdjustmentOrder.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(phase=phase)
         .select_related(
             "player",

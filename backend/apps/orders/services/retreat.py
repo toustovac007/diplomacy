@@ -112,7 +112,7 @@ def resolve_retreat_phase(phase):
 
     dislodged_units = list(
         Unit.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(
             game=game,
             is_dislodged=True,
