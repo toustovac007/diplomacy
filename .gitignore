@@ -1,0 +1,42 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+*.log
+venv/
+.venv/
+.idea/
+node_modules/
+dist/
+
+# Local caches and generated build/test output
+.pytest_cache/
+.cache/
+.vite/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+build/
+/backend/staticfiles/
+
+# Local databases, uploads and optional Docker bind-mount data
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+/backend/media/*
+!/backend/media/.gitkeep
+/pgdata/
+/postgres_data/
+/media_data/
+
+# Private key material and machine-specific editor/OS state
+*.pem
+*.key
+*.iml
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db
+Desktop.ini
+.DS_Store
