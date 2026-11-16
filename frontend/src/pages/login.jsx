@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import SocialLogin from "../components/SocialLogin";
+import leftArtwork from "../assets/auth/login-left.png";
+import rightArtwork from "../assets/auth/login-right.png";
+import diplomacyMark from "../assets/auth/diplomacie-mark.png";
+import "./login.css";
 
 function Login({ onRegisterClick }) {
     const { login } = useAuth();
@@ -27,45 +31,58 @@ function Login({ onRegisterClick }) {
     };
 
     return (
-        <div>
-            <h1>Diplomacy</h1>
-            <h2>Přihlášení</h2>
+        <main className="login-page">
+            <div className="login-artwork" aria-hidden="true">
+                <img className="login-artwork__left" src={leftArtwork} alt="" />
+                <img className="login-artwork__right" src={rightArtwork} alt="" />
+            </div>
+            <section className="login-card" aria-labelledby="login-title">
+                <header className="login-card__header">
+                    <img className="login-mark" src={diplomacyMark} alt="" />
+                    <h1 id="login-title">Diplomacie</h1>
+                    <p>Strategické aliance, vyjednávání a boj o nadvládu v Evropě.</p>
+                </header>
+                <h2>Přihlášení</h2>
 
-            <form onSubmit={handleLogin}>
-                <div>
-                    <label>Uživatelské jméno</label>
-                    <br />
-                    <input
-                        type="text"
-                        value={username}
-                        onChange={(event) => setUsername(event.target.value)}
-                    />
-                </div>
+                <form className="login-form" onSubmit={handleLogin}>
+                    <div className="login-field">
+                        <label htmlFor="login-username">Uživatelské jméno</label>
+                        <input
+                            id="login-username"
+                            name="username"
+                            autoComplete="username"
+                            type="text"
+                            value={username}
+                            onChange={(event) => setUsername(event.target.value)}
+                        />
+                    </div>
 
-                <div>
-                    <label>Heslo</label>
-                    <br />
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                    />
-                </div>
+                    <div className="login-field">
+                        <label htmlFor="login-password">Heslo</label>
+                        <input
+                            id="login-password"
+                            name="password"
+                            autoComplete="current-password"
+                            type="password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                        />
+                    </div>
 
-                <button type="submit">
-                    Přihlásit
-                </button>
-            </form>
+                    <button className="login-submit" type="submit">
+                        Přihlásit
+                    </button>
+                </form>
 
-            {error && <p>{error}</p>}
-            <SocialLogin />
+                {error && <p className="login-error" role="alert">{error}</p>}
+                <SocialLogin />
 
-             <p>Nemáš ještě účet?</p>
-
-            <button onClick={onRegisterClick}>
-                Vytvořit účet
-            </button>
-        </div>
+                <p className="login-register">
+                    Nemáte ještě účet?{" "}
+                    <button type="button" onClick={onRegisterClick}>Registrovat</button>
+                </p>
+            </section>
+        </main>
     );
 }
 
