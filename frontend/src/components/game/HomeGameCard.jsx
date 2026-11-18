@@ -1,17 +1,16 @@
 import { Link } from "react-router-dom";
-import GameSettingsSummary from "./GameSettingsSummary";
+import GameStatusBadge from "./GameStatusBadge";
+import formatDuration from "./formatDuration";
 
 export default function HomeGameCard({ game, variant, currentUsername, onJoin }) {
-    const player = game.players.find((item) => item.username === currentUsername);
+    const player = (game.players ?? []).find((item) => item.username === currentUsername);
     const phase = game.current_phase;
     const finished = variant === "finished";
     const waiting = variant === "waiting" || variant === "join";
-    const label = finished ? (game.result_type === "draw" ? "✓ Dokončena — dohoda" : "✓ Dokončena")
-        : waiting ? "Čeká na spuštění" : "Aktivní";
     return <article className={`home-game-card home-game-card--${variant}`}>
         <div className="home-game-card__header">
-            <span className="home-game-status">{label}</span>
             <h3>{game.name}</h3>
+            <GameStatusBadge status={game.status} />
         </div>
         {!waiting && player?.country && <p>Tvůj stát: <strong>{player.country_name || player.country}</strong></p>}
         {variant === "active" && <div className="home-game-card__meta">
@@ -19,9 +18,17 @@ export default function HomeGameCard({ game, variant, currentUsername, onJoin })
                 <p><strong>{phase.season_name} {phase.year}</strong> — {phase.phase_type_name}</p>
                 {phase.deadline && <p>Deadline: <time dateTime={phase.deadline}>{new Date(phase.deadline).toLocaleString("cs-CZ")}</time></p>}
             </>}
-            <p>Hráči: {game.players.length} / {game.max_players}</p>
+
         </div>}
-        {waiting && <><p>Zakladatel: {game.creator}</p><GameSettingsSummary game={game} /></>}
+        <dl className="dashboard-game-stats">
+            {game.players && <div><dt>Hráči</dt><dd>{game.players.length} / {game.max_players}</dd></div>}
+            {(game.movement_duration_minutes ?? game.turn_duration_minutes) != null && <div><dt>Pohyby</dt><dd>{formatDuration(game.movement_duration_minutes ?? game.turn_duration_minutes)}</dd></div>}
+            {game.retreat_duration_minutes != null && <div><dt>Ústupy</dt><dd>{formatDuration(game.retreat_duration_minutes)}</dd></div>}
+            {game.adjustment_duration_minutes != null && <div><dt>Úpravy</dt><dd>{formatDuration(game.adjustment_duration_minutes)}</dd></div>}
+        </dl>
+        {game.creator && <p>Zakladatel: {game.creator}</p>}
+        {waiting && <p>Viditelnost: {game.is_public ? "Veřejná" : "Soukromá"}</p>}
+        {waiting && variant !== "join" && !game.is_public && game.invite_code && <p>Pozvánka: <code>{game.invite_code}</code></p>}
         {finished && <>
             {game.result_type === "draw"
                 ? <p>Sdílené vítězství: {(game.draw_participants ?? []).map((item) => item.country_name || item.country).join(", ")}</p>

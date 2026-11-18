@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import DashboardShell from "../components/DashboardShell";
 import HomeGameCard from "../components/game/HomeGameCard";
 import NotificationSettings from "../components/NotificationSettings";
 import AccountLogin from "../components/AccountLogin";
@@ -47,7 +48,6 @@ function Home() {
     const tabs = [
         { id: "active", label: "Aktivní", games: activeGames, empty: "Momentálně nemáš žádnou rozehranou hru." },
         { id: "waiting", label: "Čekající", games: waitingGames, empty: "Nemáš žádnou hru čekající na spuštění." },
-        { id: "join", label: "Připojit se", games: publicGames, empty: "Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit." },
         { id: "finished", label: "Dokončené", games: finishedGames, empty: "Zatím nemáš žádnou dokončenou hru." },
     ];
 
@@ -84,9 +84,9 @@ function Home() {
 
 
     const loadAllGames = async () => {
-        const [own = [], joinable = []] = await Promise.all([loadGames(), loadPublicGames()]);
+        const [own = []] = await Promise.all([loadGames(), loadPublicGames()]);
         setSelectedTab((current) => current ?? (own.some((game) => game.status === "active") ? "active"
-            : own.some((game) => game.status === "waiting") ? "waiting" : joinable.length ? "join" : "finished"));
+            : own.some((game) => game.status === "waiting") ? "waiting" : "finished"));
         setLoaded(true);
     };
 
@@ -171,15 +171,15 @@ function Home() {
     };
 
     return (
+        <DashboardShell username={user?.username} onLogout={logout}>
         <main className="home-page">
             <header className="home-header">
-                <div><h1>Diplomacy</h1><p>Přihlášen jako: <strong>{user?.username}</strong></p></div>
-                <button type="button" onClick={logout}>Odhlásit se</button>
+                <div><p className="dashboard-eyebrow">VELITELSTVÍ</p><h1>Moje hry</h1><p>Tvá tažení, aliance a další kroky na mapě Evropy.</p></div>
             </header>
             <div className="home-actions">
                 <details className="home-action-panel" ref={createPanel}>
-                    <summary>+ Vytvořit novou hru</summary>
-            <form onSubmit={handleCreateGame}>
+                    <summary>+ Vytvořit hru</summary>
+            <form className="dashboard-create-form" onSubmit={handleCreateGame}>
                 <div>
                     <label htmlFor="game-name">Název hry</label>
                     <br />
@@ -216,8 +216,6 @@ function Home() {
                         {values.map((minutes) => <option key={minutes} value={minutes}>{minutes / 60} h</option>)}
                     </select>
                 </div>)}
-
-                <br />
 
                 <button type="submit">
                     Vytvořit hru
@@ -267,8 +265,18 @@ function Home() {
                             currentUsername={user?.username} onJoin={handleJoinGame} />)}
                     </div> : <p className="home-empty-state">{tab.empty}</p>}
                 </section>)}
+                <section className="dashboard-public" aria-labelledby="public-games-title">
+                    <header><h2 id="public-games-title">Veřejné hry</h2><p>Najdi nové spoluhráče a přidej se k jednání.</p></header>
+                    <div id="home-panel-join">
+                        {publicGames.length ? <div className="game-card-grid">
+                            {publicGames.map((game) => <HomeGameCard key={game.id} game={game} variant="join"
+                                currentUsername={user?.username} onJoin={handleJoinGame} />)}
+                        </div> : <p className="home-empty-state">Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit.</p>}
+                    </div>
+                </section>
             </>}
         </main>
+        </DashboardShell>
     );
 }
 
