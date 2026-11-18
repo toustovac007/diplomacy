@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import leftArtwork from "../assets/auth/login-left.png";
+import rightArtwork from "../assets/auth/login-right.png";
+import diplomacyMark from "../assets/auth/diplomacie-mark.png";
+import "./login.css";
 
 function Register({ onBackToLogin }) {
     const { register } = useAuth();
@@ -42,70 +46,84 @@ function Register({ onBackToLogin }) {
     };
 
     return (
-        <div>
-            <h1>Diplomacy</h1>
-            <h2>Registrace</h2>
+        <main className="login-page">
+            <div className="login-artwork" aria-hidden="true">
+                <img className="login-artwork__left" src={leftArtwork} alt="" />
+                <img className="login-artwork__right" src={rightArtwork} alt="" />
+            </div>
+            <section className="login-card" aria-labelledby="register-title">
+                <header className="login-card__header">
+                    <img className="login-mark" src={diplomacyMark} alt="" />
+                    <h1 id="register-title">Diplomacie</h1>
+                </header>
+                <h2>Vytvoření účtu</h2>
 
-            <form onSubmit={handleRegister}>
-                <div>
-                    <label>Uživatelské jméno</label>
-                    <br />
+                <form className="login-form" onSubmit={handleRegister}>
+                    <div className="login-field">
+                        <label htmlFor="register-username">Uživatelské jméno</label>
+                        <input
+                            id="register-username"
+                            name="username"
+                            autoComplete="username"
+                            type="text"
+                            value={username}
+                            onChange={(event) => setUsername(event.target.value)}
+                            required
+                        />
+                    </div>
 
-                    <input
-                        type="text"
-                        value={username}
-                        onChange={(event) => setUsername(event.target.value)}
-                        required
-                    />
-                </div>
+                    <div className="login-field">
+                        <label htmlFor="register-email">E-mail</label>
+                        <input
+                            id="register-email"
+                            name="email"
+                            autoComplete="email"
+                            type="email"
+                            value={email}
+                            onChange={(event) => setEmail(event.target.value)}
+                            required
+                        />
+                    </div>
 
-                <div>
-                    <label>E-mail</label>
-                    <br />
+                    <div className="login-field">
+                        <label htmlFor="register-password">Heslo</label>
+                        <input
+                            id="register-password"
+                            name="password"
+                            autoComplete="new-password"
+                            type="password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            required
+                        />
+                    </div>
 
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        required
-                    />
-                </div>
+                    <div className="login-field">
+                        <label htmlFor="register-passwordAgain">Heslo znovu</label>
+                        <input
+                            id="register-passwordAgain"
+                            name="passwordAgain"
+                            autoComplete="new-password"
+                            type="password"
+                            value={passwordAgain}
+                            onChange={(event) => setPasswordAgain(event.target.value)}
+                            required
+                        />
+                    </div>
 
-                <div>
-                    <label>Heslo</label>
-                    <br />
+                    <button className="login-submit" type="submit">
+                        Vytvořit účet
+                    </button>
+                </form>
 
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                    />
-                </div>
+                {error && <p className="login-error" role="alert">{error}</p>}
 
-                <div>
-                    <label>Heslo znovu</label>
-                    <br />
-
-                    <input
-                        type="password"
-                        value={passwordAgain}
-                        onChange={(event) => setPasswordAgain(event.target.value)}
-                        required
-                    />
-                </div>
-
-                <button type="submit">
-                    Vytvořit účet
-                </button>
-            </form>
-
-            {error && <p>{error}</p>}
-
-            <button onClick={onBackToLogin}>
-                Zpět na přihlášení
-            </button>
-        </div>
+                <p className="login-register">
+                    Už máte účet?{" "}
+                    <button type="button" onClick={onBackToLogin}>Přihlásit se</button>
+                </p>
+            </section>
+        </main>
     );
 }
 

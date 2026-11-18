@@ -839,8 +839,6 @@ const handleCoastSelect = async (coastCode) => {
                 ))}
             </ul>
         <GameSettingsSummary game={game} />
-        {game.status !== "waiting" && !game.is_public && game.invite_code &&
-            <p>Pozvánka: <code className="game-invite-code">{game.invite_code}</code></p>}
     </>;
     const hasTabs = ["active", "finished"].includes(game.status);
     const tabs = [{ id: "game", label: game.status === "finished" ? "Výsledek" : "Hra" },
@@ -959,6 +957,11 @@ const handleCoastSelect = async (coastCode) => {
                     <hr />
 
                     <h2>Lobby</h2>
+                    {game.invite_code && <section className="game-lobby-invitation" aria-labelledby="lobby-invitation-title">
+                        <h3 id="lobby-invitation-title">Kód pozvánky</h3>
+                        <code className="game-invite-code">{game.invite_code}</code>
+                        <p>Sdílej tento kód s hráči, které chceš pozvat do hry.</p>
+                    </section>}
 
                     {isCreator ? (
                         <>

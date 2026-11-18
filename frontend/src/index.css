@@ -204,6 +204,9 @@ code {
 .game-header-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: .9rem; }
 .game-info-details { margin: 20px 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; }
 .game-invite-code { user-select: all; overflow-wrap: anywhere; }
+.game-lobby-invitation { padding: 20px; margin-block: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--code-bg); }
+.game-lobby-invitation h3 { margin-top: 0; }
+.game-lobby-invitation code { display: block; font-size: 1rem; }
 .game-detail-page summary { cursor: pointer; color: var(--text-h); font-weight: 600; }
 .game-tabs { display: flex; overflow-x: auto; gap: 4px; border-bottom: 1px solid var(--border); margin: 24px 0 20px; }
 .game-tab { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--text); padding: 12px 18px; font: inherit; cursor: pointer; }

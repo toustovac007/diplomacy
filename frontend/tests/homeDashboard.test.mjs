@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { build } from 'vite';
 import React, { act } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 test('Home dashboard categorization, forms, refreshes, results and initial priorities', async (t) => {
     const dir = await mkdtemp(resolve('node_modules', '.home-test-'));
@@ -21,7 +22,7 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
     const waiting = make(2, 'waiting', { is_public: false, invite_code: 'private-code' });
     const solo = make(3, 'finished', { result_type: 'solo', winner: player, finished_at: '2026-10-19T12:00:00Z' });
     const draw = make(4, 'finished', { result_type: 'draw', draw_participants: [player, { country_name: 'Anglie' }], finished_at: '2026-10-20T12:00:00Z' });
-    const publicGame = make(5, 'waiting', { creator: 'other', players: [] });
+    const publicGame = make(5, 'waiting', { creator: 'other', players: [], invite_code: 'must-not-be-shown' });
     let own = [active, waiting, solo, draw], joinable = [publicGame], failCreate = false;
     const calls = [];
     const preferences = Object.fromEntries(['email_phase_started', 'email_deadline_reminder', 'email_chat_message', 'email_draw_events', 'email_game_finished'].map((field) => [field, true]));
@@ -48,15 +49,17 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
     let root;
     const originalError = console.error;
     try {
+        const entry = resolve(dir, 'entry.jsx');
+        await writeFile(entry, 'export { default } from "../../src/pages/home.jsx"; export { default as GameStatusBadge } from "../../src/components/game/GameStatusBadge.jsx"; export { default as formatDuration } from "../../src/components/game/formatDuration.js";');
         const bundle = await build({ logLevel: 'silent', plugins: [{ name: 'home-boundaries', enforce: 'pre', load(id) {
             const path = id.replaceAll('\\', '/');
             if (path.endsWith('/services/api.js')) return 'export default globalThis.__homeTest.api;';
             if (path.endsWith('/context/AuthContext.jsx')) return 'export const useAuth = () => ({user: {username: "france"}, logout: globalThis.__homeTest.logout});';
-        } }], build: { write: false, minify: false, lib: { entry: resolve('src/pages/home.jsx'), formats: ['es'] },
+        } }], build: { write: false, minify: false, lib: { entry, formats: ['es'] },
             rolldownOptions: { external: (id) => /^(react|react-dom|react-router-dom)(\/|$)/.test(id) } } });
         const file = resolve(dir, 'home.mjs');
         await writeFile(file, (Array.isArray(bundle) ? bundle[0] : bundle).output.find((item) => item.type === 'chunk' && item.isEntry).code);
-        const { default: Home } = await import(pathToFileURL(file).href);
+        const { default: Home, GameStatusBadge, formatDuration } = await import(pathToFileURL(file).href);
         root = createRoot(document.getElementById('root'));
         let key = 0;
         const render = () => act(async () => root.render(React.createElement(MemoryRouter, null, React.createElement(Home, { key: ++key }))));
@@ -75,9 +78,16 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
         });
         const gameGets = () => calls.filter(([method, url]) => method === 'GET' && url.startsWith('games/')).length;
         await render();
-        await t.test('four tabs, counts, cards, keyboard navigation and no tab fetches', async () => {
+        await t.test('owned tabs and separate public section, cards, keyboard navigation and no tab fetches', async () => {
+            const grid = document.querySelector('.dashboard-main-grid');
+            assert.deepEqual([...grid.children].map((node) => node.className), ['dashboard-owned', 'dashboard-quick-actions']);
+            assert.equal(grid.nextElementSibling.className, 'dashboard-public');
+            assert.equal(document.querySelectorAll('#game-name').length, 1);
+            assert.equal(document.querySelectorAll('#invite-code').length, 1);
+            assert.ok(grid.children[1].querySelector('.notification-settings'));
+            assert.equal(panel('join').querySelector('code'), null);
             assert.equal(tab('active').getAttribute('aria-selected'), 'true');
-            for (const [id, count, names] of [['active', 1, ['Game 1']], ['waiting', 1, ['Game 2']], ['join', 1, ['Game 5']], ['finished', 2, ['Game 4', 'Game 3']]]) {
+            for (const [id, count, names] of [['active', 1, ['Game 1']], ['waiting', 1, ['Game 2']], ['finished', 2, ['Game 4', 'Game 3']]]) {
                 assert.match(tab(id).textContent, new RegExp(`\\(${count}\\)`));
                 assert.deepEqual([...panel(id).querySelectorAll('h3')].map((node) => node.textContent), names);
             }
@@ -85,7 +95,11 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             assert.match(panel('active').textContent, /Jaro 1902/);
             assert.match(panel('active').textContent, /Deadline/);
             assert.equal(panel('active').querySelector('a').getAttribute('href'), '/games/1');
-            assert.match(panel('waiting').textContent, /Pohyby: 24 h/);
+            assert.match(panel('waiting').textContent, /24 hodin/);
+            assert.match(panel('join').textContent, /Game 5/);
+            assert.equal(panel('join').closest('section').getAttribute('aria-labelledby'), 'public-games-title');
+            assert.equal(panel('join').querySelector('a'), null);
+            assert.equal(gameGets(), 2);
             assert.equal(panel('waiting').querySelector('code').textContent, 'private-code');
             assert.match(panel('finished').textContent, /Vítěz: Francie — france/);
             assert.match(panel('finished').textContent, /Sdílené vítězství: Francie, Anglie/);
@@ -96,13 +110,12 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             assert.equal(tab('waiting').getAttribute('aria-selected'), 'true');
             assert.equal(gameGets(), before);
         });
-        await t.test('public join reloads both lists and preserves selected empty tab', async () => {
-            await click(tab('join'));
+        await t.test('public join reloads both lists and preserves owned tab', async () => {
             const before = gameGets();
             await click(panel('join').querySelector('button'));
             assert.ok(calls.some(([method, url]) => method === 'POST' && url === 'games/5/join/'));
             assert.equal(gameGets() - before, 2);
-            assert.equal(tab('join').getAttribute('aria-selected'), 'true');
+            assert.equal(tab('waiting').getAttribute('aria-selected'), 'true');
             assert.match(panel('join').textContent, /Momentálně nejsou žádné veřejné hry/);
             assert.match(panel('waiting').textContent, /Game 5/);
         });
@@ -135,13 +148,24 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             await submit(document.querySelector('.notification-settings form'));
             assert.ok(calls.some(([method, url]) => method === 'PATCH' && url === 'notifications/preferences/'));
         });
+        await t.test('status badges and duration formatting', () => {
+            for (const [status, emoji, label] of [['waiting', '⏳', 'Čeká'], ['active', '⚔️', 'Probíhá'], ['finished', '✅', 'Dokončeno'], ['future', '❔', 'Neznámý stav'], ['__proto__', '❔', 'Neznámý stav']]) {
+                const markup = renderToStaticMarkup(React.createElement(GameStatusBadge, { status }));
+                assert.ok(markup.includes(emoji));
+                assert.ok(markup.includes(label));
+            }
+            for (const [minutes, label] of [[60, '1 hodina'], [120, '2 hodiny'], [360, '6 hodin'], [720, '12 hodin'], [1440, '24 hodin'], [2880, '48 hodin'], [4320, '72 hodin'], [90, '90 min'], [null, '—']]) {
+                assert.equal(formatDuration(minutes), label);
+            }
+        });
         await t.test('initial priority and all empty states', async () => {
-            for (const [games, publicGames, expected] of [[[waiting, solo], [publicGame], 'waiting'], [[solo], [publicGame], 'join'], [[solo], [], 'finished'], [[], [], 'finished']]) {
+            for (const [games, publicGames, expected] of [[[waiting, solo], [publicGame], 'waiting'], [[solo], [publicGame], 'finished'], [[solo], [], 'finished'], [[], [], 'finished']]) {
                 own = games; joinable = publicGames;
                 await render();
                 assert.equal(tab(expected).getAttribute('aria-selected'), 'true');
             }
-            for (const id of ['active', 'waiting', 'join', 'finished']) {
+            assert.ok(panel('join').querySelector('.home-empty-state'));
+            for (const id of ['active', 'waiting', 'finished']) {
                 await click(tab(id));
                 assert.ok(panel(id).querySelector('.home-empty-state'));
                 assert.equal(panel(id).hidden, false);

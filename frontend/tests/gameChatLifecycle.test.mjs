@@ -30,11 +30,13 @@ test('one chat and polling owner survives phase transitions and navigation', asy
     let phase = 1;
     let finished = false;
     let waiting = false;
+    let isPublic = false;
+    let inviteCode = '71c8ebae-dbc0-4f43-a5cf-0db0435246da';
     let proposal = null;
     let unread = 3;
     const requests = [];
     const game = () => ({ id: 1, name: 'Lifecycle regression', creator: 'france', status: waiting ? 'waiting' : finished ? 'finished' : 'active',
-        manual_resolve_allowed: true, players: [player], units: [], supply_centers: [], max_players: 7,
+        is_public: isPublic, invite_code: inviteCode, manual_resolve_allowed: true, players: [player], units: [], supply_centers: [], max_players: 7,
         current_phase: finished ? null : { id: phase, sequence: phase, year: 1901, season: 'spring', season_name: 'Jaro', phase_type: 'movement', phase_type_name: 'Pohyby', status: 'open' } });
     globalThis.__chatTest = {
         user: { username: 'france' },
@@ -95,6 +97,8 @@ test('one chat and polling owner survives phase transitions and navigation', asy
             assert.ok(button, `Missing control ${text}`);
             await act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
         };
+        assert.equal(document.querySelector('.game-lobby-invitation'), null);
+        assert.ok(!document.body.textContent.includes(inviteCode));
         const counts = [document.querySelectorAll('.game-chat').length];
         const tab = (name) => [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent.startsWith(name));
         const panel = (name) => document.getElementById(tab(name).getAttribute('aria-controls'));
@@ -208,6 +212,8 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent === 'Mapa na celou obrazovku'), false);
         assert.match(document.querySelector('.game-chat').textContent, /pouze ke čtení/);
         assert.equal(document.querySelector('.chat-compose'), null);
+        assert.equal(document.querySelector('.game-lobby-invitation'), null);
+        assert.ok(!document.body.textContent.includes(inviteCode));
         assert.equal(tab('Výsledek').getAttribute('aria-selected'), 'true');
         assert.equal(panel('Diplomacie').hidden, true);
         await click('Diplomacie');
@@ -218,6 +224,8 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         assert.equal(timers.size, 0);
         await click('Return to game');
         assert.equal(document.querySelectorAll('.game-chat').length, 1);
+        assert.equal(document.querySelector('.game-lobby-invitation'), null);
+        assert.ok(!document.body.textContent.includes(inviteCode));
         assert.equal(tab('Výsledek').getAttribute('aria-selected'), 'true');
         await click('Zpět na moje hry');
         finished = false; waiting = true;
@@ -225,6 +233,22 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         assert.equal(document.querySelector('[role=tablist]'), null);
         assert.equal(document.querySelector('.game-chat'), null);
         assert.match(document.body.textContent, /Lobby/);
+        const invitation = () => document.querySelector('.game-lobby-invitation');
+        assert.equal(invitation().querySelector('code').textContent, inviteCode);
+        assert.equal(document.querySelectorAll('code.game-invite-code').length, 1);
+        assert.match(invitation().textContent, /Sdílej tento kód/);
+        assert.ok([...document.querySelectorAll('button')].find((node) => node.textContent.includes('Spustit hru')).disabled);
+        await click('Zpět na moje hry');
+        isPublic = true;
+        globalThis.__chatTest.user = { username: 'england' };
+        await click('Return to game');
+        assert.equal(invitation().querySelector('code').textContent, inviteCode);
+        assert.match(document.body.textContent, /Čeká se, až zakladatel/);
+        assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent.includes('Spustit hru')), false);
+        await click('Zpět na moje hry');
+        inviteCode = undefined;
+        await click('Return to game');
+        assert.equal(invitation(), null);
         assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent === 'Mapa na celou obrazovku'), false);
         assert.equal(warnings.filter((w) => w.includes('same key')).length, 0);
     } finally {
