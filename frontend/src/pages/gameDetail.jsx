@@ -589,6 +589,7 @@ const handleCoastSelect = async (coastCode) => {
             return;
         }
 
+
         if (orderType === "move") {
             setDraftOrderType("move");
             return;
@@ -598,6 +599,7 @@ const handleCoastSelect = async (coastCode) => {
             setDraftOrderType("support-unit");
         }
     };
+
 
 
     const handleSupportModeSelect = async (mode) => {
