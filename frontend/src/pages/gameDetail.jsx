@@ -554,6 +554,7 @@ const handleCoastSelect = async (coastCode) => {
         setConvoyedUnit(null);
         setCoastSelection(null);
 
+
         if (isAdjustment) {
             if (orderType === "disband" && !selectedUnit.is_dislodged && adjustmentStatus?.disbands_remaining > 0) {
                 await saveMapOrder({ order_type: "disband", unit_id: selectedUnit.id });

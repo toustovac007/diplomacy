@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
-import DashboardShell from "../components/DashboardShell";
 import HomeGameCard from "../components/game/HomeGameCard";
 import NotificationSettings from "../components/NotificationSettings";
 import AccountLogin from "../components/AccountLogin";
@@ -48,6 +47,7 @@ function Home() {
     const tabs = [
         { id: "active", label: "Aktivní", games: activeGames, empty: "Momentálně nemáš žádnou rozehranou hru." },
         { id: "waiting", label: "Čekající", games: waitingGames, empty: "Nemáš žádnou hru čekající na spuštění." },
+        { id: "join", label: "Připojit se", games: publicGames, empty: "Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit." },
         { id: "finished", label: "Dokončené", games: finishedGames, empty: "Zatím nemáš žádnou dokončenou hru." },
     ];
 
@@ -84,9 +84,9 @@ function Home() {
 
 
     const loadAllGames = async () => {
-        const [own = []] = await Promise.all([loadGames(), loadPublicGames()]);
+        const [own = [], joinable = []] = await Promise.all([loadGames(), loadPublicGames()]);
         setSelectedTab((current) => current ?? (own.some((game) => game.status === "active") ? "active"
-            : own.some((game) => game.status === "waiting") ? "waiting" : "finished"));
+            : own.some((game) => game.status === "waiting") ? "waiting" : joinable.length ? "join" : "finished"));
         setLoaded(true);
     };
 
@@ -171,47 +171,15 @@ function Home() {
     };
 
     return (
-        <DashboardShell username={user?.username} onLogout={logout}>
         <main className="home-page">
             <header className="home-header">
-                <div><p className="dashboard-eyebrow">VELITELSTVÍ</p><h1>Moje hry</h1><p>Tvá tažení, aliance a další kroky na mapě Evropy.</p></div>
+                <div><h1>Diplomacy</h1><p>Přihlášen jako: <strong>{user?.username}</strong></p></div>
+                <button type="button" onClick={logout}>Odhlásit se</button>
             </header>
-            <div className="home-feedback">
-                {error && <p role="alert">{error}</p>}
-                {message && <p role="status">{message}</p>}
-            </div>
-            <div className="dashboard-main-grid">
-                <section className="dashboard-owned" aria-label="Moje hry">
-            {!loaded ? <p role="status">Načítám hry…</p> : <>
-                <div className="game-tabs home-tabs" role="tablist" aria-label="Přehled her">
-                    {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" className="game-tab"
-                        id={`home-tab-${tab.id}`} aria-selected={selectedTab === tab.id} aria-controls={`home-panel-${tab.id}`}
-                        tabIndex={selectedTab === tab.id ? 0 : -1} onClick={() => setSelectedTab(tab.id)}
-                        onKeyDown={(event) => {
-                            const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
-                                : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
-                                : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
-                            if (next === null) return;
-                            event.preventDefault();
-                            setSelectedTab(tabs[next].id);
-                            document.getElementById(`home-tab-${tabs[next].id}`).focus();
-                        }}>{tab.label} ({tab.games.length})</button>)}
-                </div>
-                {tabs.map((tab) => <section key={tab.id} className="game-tab-panel home-tab-panel" role="tabpanel"
-                    id={`home-panel-${tab.id}`} aria-labelledby={`home-tab-${tab.id}`} hidden={selectedTab !== tab.id} tabIndex={0}>
-                    {tab.games.length ? <div className="game-card-grid">
-                        {tab.games.map((game) => <HomeGameCard key={game.id} game={game} variant={tab.id}
-                            currentUsername={user?.username} onJoin={handleJoinGame} />)}
-                    </div> : <p className="home-empty-state">{tab.empty}</p>}
-                </section>)}
-            </>}
-                </section>
-                <aside className="dashboard-quick-actions" aria-labelledby="quick-actions-title">
-                    <h2 id="quick-actions-title">Rychlé akce</h2>
             <div className="home-actions">
                 <details className="home-action-panel" ref={createPanel}>
-                    <summary>+ Vytvořit hru</summary>
-            <form className="dashboard-create-form" onSubmit={handleCreateGame}>
+                    <summary>+ Vytvořit novou hru</summary>
+            <form onSubmit={handleCreateGame}>
                 <div>
                     <label htmlFor="game-name">Název hry</label>
                     <br />
@@ -249,6 +217,8 @@ function Home() {
                     </select>
                 </div>)}
 
+                <br />
+
                 <button type="submit">
                     Vytvořit hru
                 </button>
@@ -271,21 +241,34 @@ function Home() {
                     <AccountLogin key={`account-${user?.username}`} />
                 </details>
             </div>
-                </aside>
+            <div className="home-feedback">
+                {error && <p role="alert">{error}</p>}
+                {message && <p role="status">{message}</p>}
             </div>
-            {loaded && <>
-                <section className="dashboard-public" aria-labelledby="public-games-title">
-                    <header><h2 id="public-games-title">Veřejné hry</h2><p>Najdi nové spoluhráče a přidej se k jednání.</p></header>
-                    <div id="home-panel-join">
-                        {publicGames.length ? <div className="game-card-grid">
-                            {publicGames.map((game) => <HomeGameCard key={game.id} game={game} variant="join"
-                                currentUsername={user?.username} onJoin={handleJoinGame} />)}
-                        </div> : <p className="home-empty-state">Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit.</p>}
-                    </div>
-                </section>
+            {!loaded ? <p role="status">Načítám hry…</p> : <>
+                <div className="game-tabs home-tabs" role="tablist" aria-label="Přehled her">
+                    {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" className="game-tab"
+                        id={`home-tab-${tab.id}`} aria-selected={selectedTab === tab.id} aria-controls={`home-panel-${tab.id}`}
+                        tabIndex={selectedTab === tab.id ? 0 : -1} onClick={() => setSelectedTab(tab.id)}
+                        onKeyDown={(event) => {
+                            const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+                                : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+                                : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+                            if (next === null) return;
+                            event.preventDefault();
+                            setSelectedTab(tabs[next].id);
+                            document.getElementById(`home-tab-${tabs[next].id}`).focus();
+                        }}>{tab.label} ({tab.games.length})</button>)}
+                </div>
+                {tabs.map((tab) => <section key={tab.id} className="game-tab-panel home-tab-panel" role="tabpanel"
+                    id={`home-panel-${tab.id}`} aria-labelledby={`home-tab-${tab.id}`} hidden={selectedTab !== tab.id} tabIndex={0}>
+                    {tab.games.length ? <div className="game-card-grid">
+                        {tab.games.map((game) => <HomeGameCard key={game.id} game={game} variant={tab.id}
+                            currentUsername={user?.username} onJoin={handleJoinGame} />)}
+                    </div> : <p className="home-empty-state">{tab.empty}</p>}
+                </section>)}
             </>}
         </main>
-        </DashboardShell>
     );
 }
 
