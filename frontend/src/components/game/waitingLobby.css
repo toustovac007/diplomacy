@@ -1,0 +1,28 @@
+.waiting-lobby { width: 100%; max-width: 1200px; margin: auto; padding: 40px 28px 64px; overflow-wrap: anywhere; }
+.waiting-lobby__header { margin-bottom: 28px; }
+.waiting-lobby__header a { color: #e0c598; text-underline-offset: 4px; }
+.waiting-lobby__header h1 { color: var(--app-surface); font-family: Georgia, serif; font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 12px 0 20px; }
+.waiting-lobby__eyebrow { color: #d0b27f; text-transform: uppercase; font-size: .8rem; letter-spacing: .14em; margin-top: 28px; }
+.waiting-lobby__summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.waiting-lobby__grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+.waiting-lobby__side { display: grid; gap: 24px; min-width: 0; }
+.waiting-lobby .waiting-lobby__card { min-width: 0; padding: 24px; margin: 0; border: 1px solid var(--app-border); border-top: 3px solid var(--app-gold); border-radius: 12px; background: var(--app-surface); color: var(--app-ink); box-shadow: var(--app-shadow); }
+.waiting-lobby__card h2 { font-size: 1.3rem; margin: 0 0 20px; }
+.waiting-lobby__players { list-style: none; margin: 0; padding: 0; }
+.waiting-lobby__players li { padding: 16px 0; border-bottom: 1px solid var(--app-border); }
+.waiting-lobby__player-labels { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.waiting-lobby__player-labels span { padding: 2px 8px; border-radius: 5px; background: var(--app-surface-muted); font-size: .85rem; }
+.waiting-lobby__start { margin-top: 24px; }
+.waiting-lobby__start [role="alert"] { color: var(--app-burgundy); }
+.waiting-lobby .game-invite-code { display: block; padding: 14px; margin: 20px 0; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-muted); color: var(--app-ink); user-select: all; overflow-wrap: anywhere; }
+.waiting-lobby__settings { margin: 0; }
+.waiting-lobby__settings > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--app-border); }
+.waiting-lobby__settings dt { color: var(--app-muted); }
+.waiting-lobby__settings dd { margin: 0; font-weight: 600; }
+@media (max-width: 850px) {
+  .waiting-lobby__grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .waiting-lobby { padding: 28px 16px 40px; }
+  .waiting-lobby .waiting-lobby__card { padding: 18px; }
+}

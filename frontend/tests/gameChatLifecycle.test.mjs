@@ -32,18 +32,25 @@ test('one chat and polling owner survives phase transitions and navigation', asy
     let waiting = false;
     let isPublic = false;
     let inviteCode = '71c8ebae-dbc0-4f43-a5cf-0db0435246da';
+    let players = [player];
+    let gameRequest;
+    let startRequest;
+    let rejectStart = false;
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const setClipboard = (value) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value });
     let proposal = null;
     let unread = 3;
     const requests = [];
     const game = () => ({ id: 1, name: 'Lifecycle regression', creator: 'france', status: waiting ? 'waiting' : finished ? 'finished' : 'active',
-        is_public: isPublic, invite_code: inviteCode, manual_resolve_allowed: true, players: [player], units: [], supply_centers: [], max_players: 7,
+        is_public: isPublic, invite_code: inviteCode, manual_resolve_allowed: true, players, units: [], supply_centers: [], max_players: 7,
         current_phase: finished ? null : { id: phase, sequence: phase, year: 1901, season: 'spring', season_name: 'Jaro', phase_type: 'movement', phase_type_name: 'Pohyby', status: 'open' } });
     globalThis.__chatTest = {
         user: { username: 'france' },
         record: (...entry) => diagnostics.push(entry),
         api: {
-            async get(url) {
+            async get(url, config) {
                 requests.push(url);
+                if (url === 'games/1/' && gameRequest) return gameRequest(config);
                 if (url === 'games/1/') return { data: game() };
                 if (url.endsWith('/readiness/')) return { data: { game_status: finished ? 'finished' : 'active', phase: finished ? null : { id: phase }, readiness_supported: true, is_required: false, is_ready: false, ready_count: 0, required_count: 0 } };
                 if (url.endsWith('/chats/')) return { data: [{ id: 1, conversation_type: 'direct', participants: [player, { id: 2, username: 'england', country_name: 'Anglie' }], unread_count: unread }] };
@@ -57,6 +64,12 @@ test('one chat and polling owner survives phase transitions and navigation', asy
             },
             async post(url) {
                 requests.push(url);
+                if (url === 'games/1/start/') {
+                    await new Promise((resolve) => { startRequest = resolve; });
+                    if (rejectStart) throw { response: { data: { detail: 'Start selhal.' } } };
+                    waiting = false;
+                    return { data: game() };
+                }
                 if (url === 'orders/games/1/resolve/') phase += 1;
                 else if (url.endsWith('/read/')) unread = 0;
                 else if (!url.endsWith('/read/')) throw new Error(`Unexpected POST ${url}`);
@@ -237,19 +250,112 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         assert.equal(invitation().querySelector('code').textContent, inviteCode);
         assert.equal(document.querySelectorAll('code.game-invite-code').length, 1);
         assert.match(invitation().textContent, /Sdílej tento kód/);
+        assert.ok(document.querySelector('.dashboard-navbar'));
+        assert.match(document.querySelector('.waiting-lobby__players').textContent, /Zakladatel/);
+        assert.match(document.querySelector('.waiting-lobby__players').textContent, /Ty/);
+        let copied;
+        setClipboard({ writeText: async (value) => { copied = value; } });
+        await click('Zkopírovat kód');
+        assert.equal(copied, inviteCode);
+        assert.equal(invitation().querySelector('[role=status]').textContent, 'Kód zkopírován.');
+        setClipboard({ writeText: async () => { throw new Error('Denied'); } });
+        await click('Zkopírovat kód');
+        assert.match(invitation().querySelector('[role=status]').textContent, /Označ ho a zkopíruj ručně/);
+        setClipboard(undefined);
+        await click('Zkopírovat kód');
+        assert.match(invitation().querySelector('[role=status]').textContent, /Označ ho a zkopíruj ručně/);
         assert.ok([...document.querySelectorAll('button')].find((node) => node.textContent.includes('Spustit hru')).disabled);
+        assert.equal(timers.size, 1);
+        const lobbyTimer = [...timers.values()][0];
+        assert.equal(lobbyTimer.ms, 5000);
+        gameRequest = async () => { throw new Error('Offline'); };
+        await act(async () => lobbyTimer.callback());
+        assert.match(document.body.textContent, /Lobby se nepodařilo aktualizovat/);
+        assert.ok(document.querySelector('.waiting-lobby'));
+        let finishRefresh;
+        let refreshSignal;
+        gameRequest = (config) => {
+            refreshSignal = config.signal;
+            return new Promise((resolve) => { finishRefresh = resolve; });
+        };
+        const requestsBeforeRefresh = requests.length;
+        await act(async () => { void lobbyTimer.callback(); void lobbyTimer.callback(); });
+        assert.equal(requests.length - requestsBeforeRefresh, 1);
+        players = [player, { id: 2, username: 'england' }];
+        await act(async () => finishRefresh({ data: game() }));
+        assert.match(document.querySelector('.waiting-lobby__summary').textContent, /2 \/ 7/);
+        assert.equal(document.querySelectorAll('.waiting-lobby__players li').length, 2);
+        assert.ok(!document.body.textContent.includes('Lobby se nepodařilo aktualizovat'));
+        assert.equal([...document.querySelectorAll('button')].find((node) => node.textContent === 'Spustit hru').disabled, false);
+        // An outstanding refresh is cancelled when navigating out of the lobby.
+        await act(async () => { void lobbyTimer.callback(); });
         await click('Zpět na moje hry');
+        assert.equal(timers.size, 0);
+        assert.equal(refreshSignal.aborted, true);
+        await act(async () => finishRefresh({ data: game() }));
+        assert.equal(document.querySelector('.waiting-lobby'), null);
+        gameRequest = undefined;
         isPublic = true;
         globalThis.__chatTest.user = { username: 'england' };
         await click('Return to game');
         assert.equal(invitation().querySelector('code').textContent, inviteCode);
+        assert.equal(invitation().querySelector('[role=status]').textContent, '');
         assert.match(document.body.textContent, /Čeká se, až zakladatel/);
         assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent.includes('Spustit hru')), false);
+        const memberLobbyTimer = [...timers.values()][0];
+        const memberMounts = diagnostics.filter((entry) => entry[0] === 'GameDetail' && entry[1] === 'MOUNT').length;
+        waiting = false;
+        await act(async () => memberLobbyTimer.callback());
+        assert.equal(document.querySelector('.waiting-lobby'), null);
+        assert.equal(document.querySelector('.dashboard-shell'), null);
+        assert.equal(document.querySelectorAll('.game-chat').length, 1);
+        assert.equal(tab('Hra').getAttribute('aria-selected'), 'true');
+        assert.equal([...timers.values()].includes(memberLobbyTimer), false);
+        assert.equal(diagnostics.filter((entry) => entry[0] === 'GameDetail' && entry[1] === 'MOUNT').length, memberMounts);
         await click('Zpět na moje hry');
+        waiting = true;
         inviteCode = undefined;
         await click('Return to game');
         assert.equal(invitation(), null);
         assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent === 'Mapa na celou obrazovku'), false);
+        await click('Zpět na moje hry');
+        players = [player, { id: 2, username: 'england' }];
+        globalThis.__chatTest.user = { username: 'france' };
+        inviteCode = 'changed-code';
+        await click('Return to game');
+        assert.equal(invitation().querySelector('[role=status]').textContent, '');
+        const detailMounts = diagnostics.filter((entry) => entry[0] === 'GameDetail' && entry[1] === 'MOUNT').length;
+        const startCount = () => requests.filter((url) => url === 'games/1/start/').length;
+        rejectStart = true;
+        await click('Spustit hru');
+        const busy = [...document.querySelectorAll('button')].find((node) => node.textContent === 'Spouštím…');
+        assert.ok(busy.disabled);
+        await act(async () => busy.click());
+        assert.equal(startCount(), 1);
+        await act(async () => startRequest());
+        assert.match(document.querySelector('[role=alert]').textContent, /Start selhal/);
+        rejectStart = false;
+        // Even a transport that returns after cancellation cannot undo local start.
+        const lateWaitingGame = game();
+        gameRequest = (config) => {
+            refreshSignal = config.signal;
+            return new Promise((resolve) => { finishRefresh = resolve; });
+        };
+        await act(async () => { void [...timers.values()][0].callback(); });
+        await click('Spustit hru');
+        assert.equal(refreshSignal.aborted, true);
+        gameRequest = undefined;
+        await act(async () => startRequest());
+        await act(async () => finishRefresh({ data: lateWaitingGame }));
+        assert.equal(startCount(), 2);
+        assert.equal(document.querySelector('.dashboard-shell'), null);
+        assert.equal(invitation(), null);
+        assert.equal(document.querySelectorAll('.game-chat').length, 1);
+        assert.equal(tab('Hra').getAttribute('aria-selected'), 'true');
+        assert.equal(diagnostics.filter((entry) => entry[0] === 'GameDetail' && entry[1] === 'MOUNT').length, detailMounts);
+        await click('Diplomacie');
+        await click('Anglie');
+        assert.equal([...timers.values()].filter((timer) => timer.ms === 5000).length, 1);
         assert.equal(warnings.filter((w) => w.includes('same key')).length, 0);
     } finally {
         if (root) await act(async () => root.unmount());
@@ -257,6 +363,8 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         console.error = originalError;
         globalThis.setInterval = originalInterval;
         globalThis.clearInterval = originalClear;
+        if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+        else delete navigator.clipboard;
         delete globalThis.__chatTest;
         dom.window.close();
         assert.ok(dir.startsWith(resolve("node_modules") + sep));

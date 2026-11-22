@@ -1,3 +1,4 @@
+import WaitingLobby from "../components/game/WaitingLobby";
 import PhaseReadinessPanel from "../components/game/PhaseReadinessPanel";
 import GameHistory from "../components/game/GameHistory";
 import historicalOrderLabel from "../components/game/historicalOrderLabel";
@@ -53,9 +54,44 @@ function GameDetail() {
     const [mapTarget, setMapTarget] =
         useState("");
     const { gameId } = useParams();
-    const { user } = useAuth();
+    const { user, logout } = useAuth();
+    const [starting, setStarting] = useState(false);
+    const startPending = useRef(false);
 
     const [game, setGame] = useState(null);
+    const [lobbyRefreshError, setLobbyRefreshError] = useState(null);
+    useEffect(() => {
+        if (game?.status !== "waiting" || String(game.id) !== gameId || starting) return;
+        const controller = new AbortController();
+        let pending = false;
+        const refreshLobby = async () => {
+            if (pending || controller.signal.aborted) return;
+            pending = true;
+            try {
+                const response = await api.get(`games/${gameId}/`, {
+                    signal: controller.signal,
+                    timeout: 15000,
+                });
+                if (controller.signal.aborted) return;
+                // A delayed lobby response must not replace an already started game.
+                setGame((current) => current?.status === "waiting" && String(current.id) === gameId
+                    ? response.data : current);
+                setLobbyRefreshError(null);
+            } catch {
+                if (!controller.signal.aborted) {
+                    setLobbyRefreshError({ gameId, message: "Lobby se nepodařilo aktualizovat. Připojení zkusíme znovu." });
+                }
+            } finally {
+                pending = false;
+            }
+        };
+        const timer = setInterval(refreshLobby, 5000);
+        return () => {
+            clearInterval(timer);
+            controller.abort();
+        };
+    }, [gameId, game?.id, game?.status, starting]);
+
     const [focusGameId, setFocusGameId] = useState(null);
     const [focusPane, setFocusPane] = useState("map");
     const [narrowFocus, setNarrowFocus] = useState(() => window.matchMedia?.("(max-width: 850px)").matches ?? false);
@@ -730,6 +766,9 @@ const handleCoastSelect = async (coastCode) => {
 
 
     const handleStartGame = async () => {
+        if (startPending.current) return;
+        startPending.current = true;
+        setStarting(true);
         setError("");
         setMessage("");
 
@@ -752,6 +791,9 @@ const handleCoastSelect = async (coastCode) => {
             } else {
                 setError("Hru se nepodařilo spustit.");
             }
+        } finally {
+            startPending.current = false;
+            setStarting(false);
         }
     };
 
@@ -773,6 +815,13 @@ const handleCoastSelect = async (coastCode) => {
         );
     }
 
+
+    if (game.status === "waiting") {
+        return <WaitingLobby key={`${game.id}:${game.invite_code ?? ""}`} game={game}
+            username={user?.username} onLogout={logout} onStart={handleStartGame}
+            starting={starting} error={error} message={message}
+            refreshError={lobbyRefreshError?.gameId === gameId ? lobbyRefreshError.message : ""} />;
+    }
 
     const previousOrdersPanel = (
         <section>
@@ -796,9 +845,6 @@ const handleCoastSelect = async (coastCode) => {
             </>}
         </section>
     );
-
-    const isCreator =
-        game.creator === user?.username;
 
     const currentPlayer = game.players.find(
     (player) => player.username === user?.username
@@ -954,48 +1000,6 @@ const handleCoastSelect = async (coastCode) => {
                     {tab.label}{tab.id === "diplomacy" && unreadCount > 0 && <span className="tab-badge" aria-label={unreadCount + " nepřečtených zpráv"}>{unreadCount}</span>}
                 </button>)}
             </div>}
-
-            {game.status === "waiting" && (
-                <>
-                    <hr />
-
-                    <h2>Lobby</h2>
-                    {game.invite_code && <section className="game-lobby-invitation" aria-labelledby="lobby-invitation-title">
-                        <h3 id="lobby-invitation-title">Kód pozvánky</h3>
-                        <code className="game-invite-code">{game.invite_code}</code>
-                        <p>Sdílej tento kód s hráči, které chceš pozvat do hry.</p>
-                    </section>}
-
-                    {isCreator ? (
-                        <>
-                            <p>
-                                Jsi zakladatel této hry.
-                            </p>
-
-                            <button
-                                onClick={handleStartGame}
-                                disabled={
-                                    game.players.length < 2
-                                }
-                            >
-                                Spustit hru
-                            </button>
-
-                            {game.players.length < 2 && (
-                                <p>
-                                    Pro spuštění jsou potřeba
-                                    alespoň 2 hráči.
-                                </p>
-                            )}
-                        </>
-                    ) : (
-                        <p>
-                            Čeká se, až zakladatel
-                            spustí hru.
-                        </p>
-                    )}
-                </>
-            )}
 
             {hasTabs && <section className="game-tab-panel" role="tabpanel" id="game-panel-game"
                 aria-labelledby={focusMode ? undefined : "game-tab-game"} hidden={activeTab !== "game"} tabIndex={focusMode ? -1 : 0}>
