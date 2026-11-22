@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: diplomacy
+  namespace: diplomacy
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [diplomacy.kube.sspu-opava.cz]
+      secretName: diplomacy.kube.sspu-opava.cz-tls
+  rules:
+    - host: diplomacy.kube.sspu-opava.cz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: diplomacy
+                port:
+                  number: 80

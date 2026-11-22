@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: diplomacy-media
+  namespace: diplomacy
+spec:
+  storageClassName: csi-rbd-sc
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diplomacy
+  namespace: diplomacy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: diplomacy
+  template:
+    metadata:
+      labels:
+        app: diplomacy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 10001
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: backend
+          image: ghcr.io/toustovac007/diplomacy-backend:master
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          envFrom:
+            - configMapRef:
+                name: diplomacy-config
+            - secretRef:
+                name: diplomacy-secrets
+          volumeMounts:
+            - name: media
+              mountPath: /app/media
+          startupProbe:
+            tcpSocket:
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings'); import django; django.setup(); from django.db import connection; connection.cursor().execute('SELECT 1')"
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+        - name: frontend
+          image: ghcr.io/toustovac007/diplomacy-frontend:master
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: nginx
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+            - name: media
+              mountPath: /srv/media
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+      volumes:
+        - name: nginx
+          configMap:
+            name: diplomacy-nginx
+        - name: media
+          persistentVolumeClaim:
+            claimName: diplomacy-media
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: diplomacy
+  namespace: diplomacy
+spec:
+  selector:
+    app: diplomacy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+

@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: diplomacy-migrate
+  namespace: diplomacy
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: diplomacy-migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: migrate
+          image: ghcr.io/toustovac007/diplomacy-backend:master
+          command: [python, docker_init.py]
+          envFrom:
+            - configMapRef:
+                name: diplomacy-config
+            - secretRef:
+                name: diplomacy-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
