@@ -92,9 +92,15 @@ separate database. Never overwrite an existing database during a deployment.
 enabled. Manual phase resolution is disabled. Email is initially disabled via
 Django's dummy backend until SMTP credentials are supplied. Notifications handled
 by that backend can be recorded as sent, and are not replayed when SMTP is enabled.
-Google/GitHub OAuth remains unconfigured. Email/password registration and login
-work independently. Configure production OAuth callbacks to the same public
-origin when enabling providers.
+Google OAuth reads the existing client's credentials from the optional
+`diplomacy-google-oauth` Secret, referenced by the backend container only. The
+Google client must allow the exact callback
+`https://diplomacy.kube.sspu-opava.cz/api/users/oauth/google/callback/`.
+The callback is configured in `config.yaml`. After adding or changing credentials,
+restart the Deployment and check `/api/users/oauth/providers/`.
+See `backend/OAUTH.md` for the browser checks and existing-account linking flow.
+GitHub OAuth remains unconfigured. Email/password registration and login work
+independently.
 
 The signing key, DB password, SMTP password, registry credentials and kubeconfig
 belong in Secrets or local files outside Git. Kubernetes Secret access should be
@@ -132,3 +138,19 @@ included the repository with Admin permission.
   existing map, and a temporary media file survived Pod recreation and was served
   through public nginx. The file was removed after the check. Final HTTPS checks
   returned 200 for the frontend and JSON 401 for the unauthenticated user API.
+
+## Google OAuth validation, 2026-11-23
+
+- The existing Google client's credentials were transferred to the separate
+  `diplomacy-google-oauth` Secret without adding credentials to repository files.
+  The configured Deployment rolled out successfully.
+- Google accepted the production callback registered on the existing client.
+  The public provider endpoint returned `google: true` and `github: false`.
+- Public HTTPS checks verified authorization start, the exact callback, basic
+  OpenID scopes, PKCE S256, nonce/state, a Secure/HttpOnly/SameSite=Lax flow cookie
+  and `Cache-Control: no-store`. Cancelling a bound flow returned `access_denied`
+  to the frontend callback and cleared the flow cookie.
+- The browser's Google button reached Google's sign-in screen. All 14 backend
+  OAuth tests passed against a separate PostgreSQL test database.
+- Completing real Google account authorization and confirming the resulting
+  application session remains a manual browser check.

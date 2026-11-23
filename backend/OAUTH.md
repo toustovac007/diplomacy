@@ -59,6 +59,25 @@ at the proxy/CDN/frontend host. Django strips OAuth URLs from request logs and
 suppresses library protocol logs. Keep normal security settings from SECURITY.md.
 Do not expose the development server publicly.
 
+### School Kubernetes Google client
+
+The deployed frontend origin is `https://diplomacy.kube.sspu-opava.cz`. Register
+this exact authorized redirect URI on the existing Google Web application client
+under Google Auth Platform / Clients:
+
+`https://diplomacy.kube.sspu-opava.cz/api/users/oauth/google/callback/`
+
+The callback is also set in `deploy/k8s/config.yaml`. The backend container reads
+`GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` from the separate Secret
+`diplomacy-google-oauth` in namespace `diplomacy`. This optional Secret is mounted
+into the backend container's environment only. Supply its values through Rancher
+or a local credentials transfer. Existing development callback URIs can remain
+registered on the client. Restart the Deployment after changing Secret values.
+
+Check `/api/users/oauth/providers/` for `google: true`, then verify the login in a
+browser. A local password account with the same email needs deliberate linking
+from the account panel before Google login can access that account.
+
 ## Endpoints and storage
 
 - GET `api/users/oauth/providers/`: public enabled booleans.
@@ -116,7 +135,7 @@ References: [Authlib web clients](https://docs.authlib.org/en/stable/client/fram
 [GitHub authorization code/PKCE](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
 
 Deferred: unlink, password reset/social password setting, 2FA/passkeys, other
-providers, HttpOnly JWT migration, provider API integrations and deployment.
+providers, HttpOnly JWT migration and provider API integrations.
 
 ## Files changed by this OAuth task
 
