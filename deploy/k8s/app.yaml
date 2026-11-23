@@ -30,8 +30,6 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         fsGroup: 10001
-      imagePullSecrets:
-        - name: ghcr-pull
       containers:
         - name: backend
           image: ghcr.io/toustovac007/diplomacy-backend:master

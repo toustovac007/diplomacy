@@ -72,6 +72,6 @@ Invoke-Kube rollout status deployment/diplomacy --timeout=300s
 Apply-Manifest 'deadlines.yaml'
 if ($existingCron) { Invoke-Kube patch cronjob diplomacy-deadlines --type merge -p '{"spec":{"suspend":false}}' }
 Apply-Manifest 'ingress.yaml'
-Invoke-Kube get pods,services,ingresses,pvc,cronjobs
+Invoke-Kube get 'pods,services,ingresses,pvc,cronjobs'
 Write-Host 'Application deployed. Verify HTTPS and the certificate at https://diplomacy.kube.sspu-opava.cz.'
 

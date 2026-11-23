@@ -31,11 +31,12 @@ Actions workflow builds both existing Dockerfiles and publishes
 `master`. Wait for both matrix jobs to succeed. Deploy the SHA tag so the web
 Pod, migrations and scheduler all use the same backend revision.
 
-New GHCR packages can be private. Provide a namespace-scoped `ghcr-pull` Docker
-registry Secret in Rancher if anonymous pulling is unavailable. Choose registry
-`ghcr.io`, your GitHub username and a token with `read:packages`. Keep the token
-out of source files and terminal command history. The manifests already refer
-to `ghcr-pull`. Public images can be pulled without that Secret.
+Both published packages were verified to support anonymous pulls for this
+deployment, so the manifests use public image pulls. If package visibility changes
+to private, create a namespace-scoped Docker registry Secret in Rancher for
+`ghcr.io` with a token scoped to `read:packages`, then reference it with
+`imagePullSecrets` in the application, migration and deadline Pod templates.
+Keep the token out of source files and terminal command history.
 
 ## First deployment
 
@@ -99,3 +100,35 @@ The signing key, DB password, SMTP password, registry credentials and kubeconfig
 belong in Secrets or local files outside Git. Kubernetes Secret access should be
 limited to the project operators. The initial DB role has the same dedicated
 database privileges as the existing Compose setup.
+
+## Validation record, 2026-11-22
+
+Deployed revision `7f7ca0ffaa3054f5bc6b5504f3a89029d3ea55c6`. Both GitHub Actions
+image jobs succeeded after retrying the backend publication. The original GHCR
+manifest push rejection was not reproduced on retry, and package access already
+included the repository with Admin permission.
+
+- Kubernetes server-side dry runs and `nginx -t` passed.
+- PostgreSQL and media PVCs bound, schema migrations applied, and the reference
+  map seeded with 7 countries, 75 provinces, 6 coasts and 428 directed adjacencies.
+- The TLS certificate is Ready. Public HTTPS page routes, SVG map, Django admin
+  and admin CSS returned 200. The unauthenticated user API returned JSON 401.
+- Temporary API accounts verified registration/login, private UUID invitations,
+  rejection of private numeric-ID joins, game start, HOLD orders, direct chat,
+  readiness advancement and an expired phase processed by the scheduled CronJob.
+  The temporary accounts and their game were deleted afterwards.
+- The full backend suite ran 261 tests against a separate PostgreSQL test DB.
+  256 passed initially. Five test methods had seven failing assertions because
+  they expected manual resolution while the production environment disabled it.
+  Those five methods passed when rerun with `ALLOW_MANUAL_PHASE_RESOLVE=true`
+  in the test process. Production keeps manual resolution disabled.
+- Django found no pending model migrations. Deployment checks reported existing
+  warnings for an empty optional static directory and HSTS subdomain/preload
+  options. HTTPS redirects, secure cookies and HSTS for this hostname are enabled.
+- The deployment script's final resource-list argument was quoted for PowerShell.
+  Unused private-registry Secret references were removed after public image
+  pulls were verified.
+- A second run of `deploy.ps1` completed successfully. Migrations preserved the
+  existing map, and a temporary media file survived Pod recreation and was served
+  through public nginx. The file was removed after the check. Final HTTPS checks
+  returned 200 for the frontend and JSON 401 for the unauthenticated user API.
