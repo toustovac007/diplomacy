@@ -89,9 +89,10 @@ separate database. Never overwrite an existing database during a deployment.
 ## Initial feature configuration
 
 `DEBUG=false`, secure cookies, explicit allowed hosts/origins, and HTTPS are
-enabled. Manual phase resolution is disabled. Email is initially disabled via
-Django's dummy backend until SMTP credentials are supplied. Notifications handled
-by that backend can be recorded as sent, and are not replayed when SMTP is enabled.
+enabled. Manual phase resolution is disabled. Email defaults to Django's dummy
+backend until the optional SMTP Secret supplies production configuration.
+Notifications handled by the dummy backend are not delivered or replayed when
+SMTP is enabled.
 Google OAuth reads the existing client's credentials from the optional
 `diplomacy-google-oauth` Secret, referenced by the backend container only. The
 Google client must allow the exact callback
@@ -152,5 +153,63 @@ included the repository with Admin permission.
   to the frontend callback and cleared the flow cookie.
 - The browser's Google button reached Google's sign-in screen. All 14 backend
   OAuth tests passed against a separate PostgreSQL test database.
-- Completing real Google account authorization and confirming the resulting
-  application session remains a manual browser check.
+- The operator subsequently completed real Google account authorization and
+  confirmed a working application session.
+
+## SMTP configuration
+
+The optional `diplomacy-email` Secret in namespace `diplomacy` supplies the mail
+configuration to both the backend container and the deadline CronJob. Its values
+override the disabled backend in `diplomacy-config`. Without this Secret, email
+remains disabled. Do not add a Secret containing real credentials to Git.
+
+Configure these keys using the chosen provider's SMTP credentials:
+
+- `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`
+- `EMAIL_HOST`: SMTP hostname
+- `EMAIL_PORT=587`
+- `EMAIL_USE_TLS=true` for STARTTLS
+- `EMAIL_TIMEOUT=10`
+- `EMAIL_HOST_USER`: SMTP login
+- `EMAIL_HOST_PASSWORD`: SMTP password or provider-issued app password
+- `DEFAULT_FROM_EMAIL`: sender address authorized by the provider
+
+The existing backend supports STARTTLS. Use the provider's STARTTLS endpoint;
+implicit TLS on port 465 requires adding `EMAIL_USE_SSL` support first.
+For Gmail, use `smtp.gmail.com`, the full Gmail address as the login and sender,
+and an app password from an account with two-step verification enabled.
+Google sign-in credentials do not grant permission to send email.
+
+For a local credential transfer, place `EMAIL_HOST_USER` and
+`EMAIL_HOST_PASSWORD` in the root `.env.smtp` file, which is ignored by Git.
+This file is not automatically loaded by Django or the deployment script;
+transfer the values to `diplomacy-email` without printing credentials.
+
+After creating or updating the Secret, restart the Deployment. The CronJob reads
+the updated Secret on its next scheduled run. Verify SMTP authentication and send
+one test message to the operator before relying on actual game notifications.
+Check a phase-start notification and a deadline reminder, including their public
+game links and Czech text. Each player can disable individual notification types
+in the existing notification preferences.
+
+Previous dummy-backend deliveries and failed delivery attempts are not replayed.
+The existing delivery policy makes one attempt per event and recipient; SMTP
+errors are recorded without exception messages or credentials and do not roll
+back gameplay.
+
+### SMTP validation, 2026-11-23
+
+- All 30 notification tests passed against a separate PostgreSQL test database.
+  Both workload manifests passed Kubernetes server-side validation.
+- The Gmail credentials were transferred from the ignored `.env.smtp` file to
+  `diplomacy-email`. The backend Deployment and deadline CronJob now reference
+  this Secret, and the Deployment rolled out successfully.
+- Gmail SMTP authenticated over STARTTLS on port 587. A single plain-text/HTML
+  test email rendered with the existing notification templates was accepted for
+  the configured sender mailbox. The operator confirmed inbox delivery and
+  correct Czech text.
+- The restarted backend authenticated again using its runtime SMTP settings.
+  Production notification links use the public application origin. Public HTTPS
+  returned 200 and the Google OAuth provider remained enabled.
+- Actual game events use the existing notification service and user preferences.
+  No historical notifications were replayed during SMTP setup.

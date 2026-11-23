@@ -48,6 +48,9 @@ spec:
             - secretRef:
                 name: diplomacy-google-oauth
                 optional: true
+            - secretRef:
+                name: diplomacy-email
+                optional: true
           volumeMounts:
             - name: media
               mountPath: /app/media

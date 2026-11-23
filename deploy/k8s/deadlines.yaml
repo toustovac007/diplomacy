@@ -34,6 +34,9 @@ spec:
                     name: diplomacy-config
                 - secretRef:
                     name: diplomacy-secrets
+                - secretRef:
+                    name: diplomacy-email
+                    optional: true
               resources:
                 requests:
                   cpu: 50m
