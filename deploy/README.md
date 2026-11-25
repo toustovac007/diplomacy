@@ -20,7 +20,10 @@ The existing Docker Compose workflow continues to use the original nginx file.
 `docker_init.py` runs as a one-shot Job before the web Pod starts. It applies
 migrations and seeds only an entirely empty map. A CronJob runs the existing
 `process_deadlines` command every minute with concurrency forbidden. This also
-handles deadline reminders. Schedule only this command for this deployment.
+handles deadline reminders. A separate `diplomacy-token-refills` CronJob runs
+`process_token_refills` hourly to apply due 48-hour minimum-balance refills.
+Do not schedule duplicate workers outside these CronJobs. See
+[token accounting and rollout](../backend/TOKENS.md).
 
 ## Images
 
@@ -51,7 +54,8 @@ fresh cluster, create it in the designated Rancher project first.
 The script creates random application/DB credentials inside Kubernetes only
 when the Secret is absent. An existing Secret is preserved on repeat runs.
 It waits for PostgreSQL, waits for the migration Job, starts the application,
-then enables the scheduler and applies the HTTPS Ingress. All commands use the
+then enables both schedulers and applies the HTTPS Ingress. Repeat deployments
+pause both schedulers and wait for active jobs before migrating. All commands use the
 explicit cluster context and namespace. Existing local database contents are
 not imported. Initial deployment starts with an empty database and new accounts.
 

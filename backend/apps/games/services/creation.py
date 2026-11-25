@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework.exceptions import APIException, Throttled
 
 from apps.games.models import Game, GamePlayer
+from apps.users.tokens import reserve_stake
 
 
 class CreatorGameLimit(APIException):
@@ -49,7 +50,8 @@ def create_game(creator, validated_data):
                 if remaining > 0:
                     raise Throttled(wait=ceil(remaining), detail="Další hru zatím nelze vytvořit.", code="game_create_cooldown")
             game = Game.objects.create(creator=user, **validated_data)
-            GamePlayer.objects.create(game=game, user=user)
+            player = GamePlayer.objects.create(game=game, user=user)
+            reserve_stake(game, player, locked_user=user)
             # Durable even after a game is finished/deleted; failed inserts roll back.
             user.last_game_created_at = game.created_at
             user.save(update_fields=["last_game_created_at"])

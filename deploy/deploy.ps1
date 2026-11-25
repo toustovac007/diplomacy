@@ -46,12 +46,18 @@ Apply-Manifest 'postgres.yaml'
 Invoke-Kube rollout status statefulset/diplomacy-postgres --timeout=300s
 
 # Updates pause the scheduler and web application before schema migrations.
-$existingCron = Invoke-Kube get cronjob diplomacy-deadlines --ignore-not-found -o name
-if ($existingCron) {
-    Invoke-Kube patch cronjob diplomacy-deadlines --type merge -p '{"spec":{"suspend":true}}'
+$existingCrons = @()
+foreach ($cronName in @('diplomacy-deadlines', 'diplomacy-token-refills')) {
+    $existingCron = Invoke-Kube get cronjob $cronName --ignore-not-found -o name
+    if ($existingCron) {
+        $existingCrons += $cronName
+        Invoke-Kube patch cronjob $cronName --type merge -p '{"spec":{"suspend":true}}'
+    }
+}
+if ($existingCrons.Count -gt 0) {
     $jobs = Invoke-Kube get jobs -o json | ConvertFrom-Json
     foreach ($job in $jobs.items) {
-        if ($job.status.active -gt 0 -and $job.metadata.ownerReferences.name -contains 'diplomacy-deadlines') {
+        if ($job.status.active -gt 0 -and @($job.metadata.ownerReferences | Where-Object { $_.name -in $existingCrons }).Count -gt 0) {
             Invoke-Kube wait --for=condition=complete "job/$($job.metadata.name)" --timeout=330s
         }
     }
@@ -70,7 +76,10 @@ Apply-Manifest 'app.yaml'
 if ($existingApp) { Invoke-Kube rollout restart deployment/diplomacy }
 Invoke-Kube rollout status deployment/diplomacy --timeout=300s
 Apply-Manifest 'deadlines.yaml'
-if ($existingCron) { Invoke-Kube patch cronjob diplomacy-deadlines --type merge -p '{"spec":{"suspend":false}}' }
+Apply-Manifest 'token-refills.yaml'
+foreach ($cronName in $existingCrons) {
+    Invoke-Kube patch cronjob $cronName --type merge -p '{"spec":{"suspend":false}}'
+}
 Apply-Manifest 'ingress.yaml'
 Invoke-Kube get 'pods,services,ingresses,pvc,cronjobs'
 Write-Host 'Application deployed. Verify HTTPS and the certificate at https://diplomacy.kube.sspu-opava.cz.'

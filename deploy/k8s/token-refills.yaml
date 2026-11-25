@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: diplomacy-token-refills
+  namespace: diplomacy
+spec:
+  schedule: "0 * * * *"
+  timeZone: Europe/Prague
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: diplomacy-token-refills
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            runAsNonRoot: true
+          containers:
+            - name: token-refills
+              image: ghcr.io/toustovac007/diplomacy-backend:master
+              command: [python, manage.py, process_token_refills]
+              envFrom:
+                - configMapRef:
+                    name: diplomacy-config
+                - secretRef:
+                    name: diplomacy-secrets
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi

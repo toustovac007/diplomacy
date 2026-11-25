@@ -5,10 +5,15 @@ import DashboardShell from "../components/DashboardShell";
 import HomeGameCard from "../components/game/HomeGameCard";
 import NotificationSettings from "../components/NotificationSettings";
 import AccountLogin from "../components/AccountLogin";
+import useTokenWallet from "../hooks/useTokenWallet";
+import { TokenRefillNotice } from "../components/tokens/WalletBalance";
+import { TOKEN_STAKES } from "../components/tokens/tokenRules";
 
 const defaultSettings = {
     max_players: 7,
     is_public: true,
+    token_stake: 100,
+    scoring: "dss",
     movement_duration_minutes: 1440,
     retreat_duration_minutes: 720,
     adjustment_duration_minutes: 720,
@@ -21,6 +26,7 @@ const durationFields = [
 const fieldLabels = Object.fromEntries([
     ["name", "Název hry"], ["max_players", "Počet hráčů"], ["is_public", "Viditelnost"],
     ["invite_code", "Pozvánka"], ...durationFields.map(([field, label]) => [field, label]),
+    ["token_stake", "Sázka"], ["scoring", "Bodování"],
 ]);
 function backendError(error, fallback) {
     const data = error.response?.data;
@@ -34,6 +40,8 @@ function backendError(error, fallback) {
 
 function Home() {
     const { user, logout } = useAuth();
+    const { wallet, walletError, refreshWallet } = useTokenWallet();
+    const availableTokens = walletError ? null : wallet?.available;
 
     const [games, setGames] = useState([]);
     const [publicGames, setPublicGames] = useState([]);
@@ -110,6 +118,10 @@ function Home() {
             setError("Zadej název hry.");
             return;
         }
+        if (availableTokens == null || settings.token_stake > availableTokens) {
+            setError(availableTokens == null ? "Počkej na načtení zůstatku tokenů." : "Na tuto sázku nemáš dostatek dostupných tokenů.");
+            return;
+        }
 
         try {
             creationFlight.current = true;
@@ -124,7 +136,7 @@ function Home() {
 
             setMessage("Hra byla vytvořena.");
 
-            await loadAllGames();
+            await Promise.all([loadAllGames(), refreshWallet()]);
 
         } catch (error) {
             console.error("API request failed", error.response?.status);
@@ -146,7 +158,7 @@ function Home() {
 
             setMessage("Úspěšně ses připojil ke hře.");
 
-            await loadAllGames();
+            await Promise.all([loadAllGames(), refreshWallet()]);
 
         } catch (error) {
             console.error("API request failed", error.response?.status);
@@ -172,22 +184,24 @@ function Home() {
             await api.post("games/join-by-code/", { invite_code: inviteCode.trim() });
             setInviteCode("");
             setMessage("Úspěšně ses připojil ke hře.");
-            await loadAllGames();
+            await Promise.all([loadAllGames(), refreshWallet()]);
         } catch (error) {
             setError(backendError(error, "Ke hře se nepodařilo připojit."));
         }
     };
 
     return (
-        <DashboardShell username={user?.username} onLogout={logout}>
+        <DashboardShell username={user?.username} onLogout={logout} headquarters wallet={wallet} walletError={walletError}>
         <main className="home-page">
             <header className="home-header">
                 <div><p className="dashboard-eyebrow">VELITELSTVÍ</p><h1>Moje hry</h1><p>Tvá tažení, aliance a další kroky na mapě Evropy.</p></div>
             </header>
             <div className="home-feedback">
+                {walletError && <p role="alert">{walletError} <button type="button" onClick={refreshWallet}>Zkusit znovu</button></p>}
                 {error && <p role="alert">{error}</p>}
                 {message && <p role="status">{message}</p>}
             </div>
+            <TokenRefillNotice wallet={wallet} />
             <div className="dashboard-main-grid">
                 <section className="dashboard-owned" aria-label="Moje hry">
             {!loaded ? <p role="status">Načítám hry…</p> : <>
@@ -209,7 +223,7 @@ function Home() {
                     id={`home-panel-${tab.id}`} aria-labelledby={`home-tab-${tab.id}`} hidden={selectedTab !== tab.id} tabIndex={0}>
                     {tab.games.length ? <div className="game-card-grid">
                         {tab.games.map((game) => <HomeGameCard key={game.id} game={game} variant={tab.id}
-                            currentUsername={user?.username} onJoin={handleJoinGame} />)}
+                            currentUsername={user?.username} availableTokens={availableTokens} onJoin={handleJoinGame} />)}
                     </div> : <p className="home-empty-state">{tab.empty}</p>}
                 </section>)}
             </>}
@@ -250,6 +264,24 @@ function Home() {
                         <option value="false">Soukromá</option>
                     </select>
                 </div>
+                <div>
+                    <label htmlFor="token-stake">Sázka každého hráče</label>
+                    <select id="token-stake" value={settings.token_stake}
+                        onChange={(event) => setSettings({ ...settings, token_stake: Number(event.target.value) })}>
+                        {TOKEN_STAKES.map((amount) => <option key={amount} value={amount}
+                            disabled={availableTokens != null && amount > availableTokens}>{amount} tokenů</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label htmlFor="scoring">Rozdělení banku</label>
+                    <select id="scoring" value={settings.scoring}
+                        onChange={(event) => setSettings({ ...settings, scoring: event.target.value })}>
+                        <option value="dss">DSS – stejný díl spoluvítězům</option>
+                        <option value="sos">SoS – podle druhé mocniny center</option>
+                        <option value="unranked">Unranked – vrácení sázky všem</option>
+                    </select>
+                </div>
+                <p className="token-form-help">Sázka se zmrazí při založení i připojení. U DSS a SoS získá sólový vítěz celý bank.</p>
                 {durationFields.map(([field, label, values]) => <div key={field}>
                     <label htmlFor={field}>{label}</label>{" "}
                     <select id={field} value={settings[field]}
@@ -258,7 +290,8 @@ function Home() {
                     </select>
                 </div>)}
 
-                <button type="submit" disabled={creating}>
+                {availableTokens != null && settings.token_stake > availableTokens && <p role="status">Na tuto sázku nemáš dost tokenů.</p>}
+                <button type="submit" disabled={creating || availableTokens == null || settings.token_stake > availableTokens}>
                     {creating ? "Vytvářím..." : "Vytvořit hru"}
                 </button>
             </form>
@@ -288,7 +321,7 @@ function Home() {
                     <div id="home-panel-join">
                         {publicGames.length ? <div className="game-card-grid">
                             {publicGames.map((game) => <HomeGameCard key={game.id} game={game} variant="join"
-                                currentUsername={user?.username} onJoin={handleJoinGame} />)}
+                                currentUsername={user?.username} availableTokens={availableTokens} onJoin={handleJoinGame} />)}
                         </div> : <p className="home-empty-state">Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit.</p>}
                     </div>
                 </section>

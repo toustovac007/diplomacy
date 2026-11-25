@@ -25,12 +25,19 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
     const publicGame = make(5, 'waiting', { creator: 'other', players: [], invite_code: 'must-not-be-shown' });
     let own = [active, waiting, solo, draw], joinable = [publicGame], failCreate = false, createGate = null, createDetail = '';
     const calls = [];
+    let wallet = {available: 1000, frozen: 200, total: 1200, minimum: 300, refill_due_at: null};
+    let nextWallet;
     const preferences = Object.fromEntries(['email_phase_started', 'email_deadline_reminder', 'email_chat_message', 'email_draw_events', 'email_game_finished'].map((field) => [field, true]));
     globalThis.__homeTest = { logout() {}, api: {
         async get(url) {
             calls.push(['GET', url]);
             if (url === 'games/') return { data: [...own] };
             if (url === 'games/public/') return { data: [...joinable] };
+            if (url === 'users/tokens/') return { data: {...wallet} };
+            if (url === 'users/ranking/') return { data: [
+                {rank: 1, username: 'england', available: 200, frozen: 1800, total: 2000},
+                {rank: 2, username: 'france', available: 700, frozen: 300, total: 1000},
+            ] };
             if (url === 'notifications/preferences/') return { data: preferences };
             throw new Error(url);
         },
@@ -43,6 +50,7 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
                 if (createDetail) throw { response: { status: 429, data: { detail: createDetail } } };
                 if (failCreate) throw { response: { data: { name: ['Tento název nelze použít.'] } } };
                 own = [...own, make(Math.max(...own.map((game) => game.id), 0) + 1, 'waiting', { ...payload, invite_code: 'created-private-code' })];
+                if (nextWallet) { wallet = nextWallet; nextWallet = null; }
             } else throw new Error(url);
             return { data: {} };
         },
@@ -52,16 +60,16 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
     const originalError = console.error;
     try {
         const entry = resolve(dir, 'entry.jsx');
-        await writeFile(entry, 'export { default } from "../../src/pages/home.jsx"; export { default as GameStatusBadge } from "../../src/components/game/GameStatusBadge.jsx"; export { default as formatDuration } from "../../src/components/game/formatDuration.js";');
+        await writeFile(entry, 'export { default } from "../../src/pages/home.jsx"; export { default as GameStatusBadge } from "../../src/components/game/GameStatusBadge.jsx"; export { default as formatDuration } from "../../src/components/game/formatDuration.js"; export { default as Ranking } from "../../src/pages/Ranking.jsx"; export { refillWait } from "../../src/components/tokens/tokenRules.js";');
         const bundle = await build({ logLevel: 'silent', plugins: [{ name: 'home-boundaries', enforce: 'pre', load(id) {
             const path = id.replaceAll('\\', '/');
-            if (path.endsWith('/services/api.js')) return 'export default globalThis.__homeTest.api;';
+            if (path.endsWith('/services/api.js')) return 'export default globalThis.__homeTest.api; export const getSessionVersion = () => 1;';
             if (path.endsWith('/context/AuthContext.jsx')) return 'export const useAuth = () => ({user: {username: "france"}, logout: globalThis.__homeTest.logout});';
         } }], build: { write: false, minify: false, lib: { entry, formats: ['es'] },
             rolldownOptions: { external: (id) => /^(react|react-dom|react-router-dom)(\/|$)/.test(id) } } });
         const file = resolve(dir, 'home.mjs');
         await writeFile(file, (Array.isArray(bundle) ? bundle[0] : bundle).output.find((item) => item.type === 'chunk' && item.isEntry).code);
-        const { default: Home, GameStatusBadge, formatDuration } = await import(pathToFileURL(file).href);
+        const { default: Home, GameStatusBadge, formatDuration, Ranking, refillWait } = await import(pathToFileURL(file).href);
         root = createRoot(document.getElementById('root'));
         let key = 0;
         const render = () => act(async () => root.render(React.createElement(MemoryRouter, null, React.createElement(Home, { key: ++key }))));
@@ -148,6 +156,7 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             await submit(form);
             assert.deepEqual(calls.filter(([method, url]) => method === 'POST' && url === 'games/').at(-1)[2], {
                 name: 'Private creation', max_players: 3, is_public: false,
+                token_stake: 100, scoring: 'dss',
                 movement_duration_minutes: 360, retreat_duration_minutes: 60, adjustment_duration_minutes: 1440,
             });
             assert.match(panel('waiting').textContent, /created-private-code/);
@@ -204,6 +213,50 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
                 assert.ok(panel(id).querySelector('.home-empty-state'));
                 assert.equal(panel(id).hidden, false);
             }
+        });
+        await t.test('wallet, affordable stake choices, scoring payload and refreshed balances', async () => {
+            wallet = {available: 200, frozen: 100, total: 300, minimum: 300, refill_due_at: null};
+            joinable = [make(99, 'waiting', {creator: 'other', token_stake: 500, scoring: 'sos', token_pot: 500})];
+            await render();
+            assert.match(document.querySelector('.token-wallet').textContent, /200Dostupné100Zmražené/);
+            assert.ok(document.querySelector('.token-amount--frozen img'));
+            assert.deepEqual([...document.getElementById('token-stake').options].map(option => Number(option.value)), [100, 200, 300, 500, 800, 1000, 1500]);
+            assert.equal(document.querySelector('#token-stake option[value="500"]').disabled, true);
+            assert.equal(panel('join').querySelector('button').disabled, true);
+            const before = calls.filter(([method, url]) => method === 'POST' && url === 'games/').length;
+            await input('game-name', 'Too expensive');
+            await select('token-stake', '500');
+            const form = document.getElementById('game-name').closest('form');
+            assert.equal(form.querySelector('button[type="submit"]').disabled, true);
+            await submit(form);
+            assert.equal(calls.filter(([method, url]) => method === 'POST' && url === 'games/').length, before);
+            await select('token-stake', '200');
+            await select('scoring', 'sos');
+            nextWallet = {available: 0, frozen: 300, total: 300, minimum: 300, refill_due_at: null};
+            await submit(form);
+            const payload = calls.filter(([method, url]) => method === 'POST' && url === 'games/').at(-1)[2];
+            assert.equal(payload.token_stake, 200);
+            assert.equal(payload.scoring, 'sos');
+            assert.match(document.querySelector('.token-wallet').textContent, /0Dostupné300Zmražené/);
+            assert.equal(form.querySelector('button[type="submit"]').disabled, true);
+        });
+        await t.test('minimum refill countdown, hourly delay, and top-ten ranking view', async () => {
+            const due = Date.now() + 26 * 3_600_000;
+            wallet = {available: 150, frozen: 100, total: 250, minimum: 300, refill_due_at: new Date(due).toISOString()};
+            await render();
+            assert.match(document.querySelector('.token-refill').textContent, /1 d 2 h/);
+            assert.match(document.querySelector('.token-refill').textContent, /48 hodin/);
+            assert.deepEqual(refillWait(new Date(due).toISOString(), due - 26 * 3_600_000), {days: 1, hours: 2, ready: false});
+            wallet = {...wallet, refill_due_at: new Date(Date.now() - 1000).toISOString()};
+            await act(async () => root.render(React.createElement(MemoryRouter, {key: 'ranking', initialEntries: ['/ranking']}, React.createElement(Ranking))));
+            assert.equal(document.querySelector('h1').textContent, 'Žebříček hráčů');
+            assert.match(document.querySelector('.token-refill').textContent, /hodinovou kontrolu/);
+            const rows = document.querySelectorAll('.token-ranking tbody tr');
+            assert.equal(rows.length, 2);
+            assert.match(rows[0].textContent, /england/);
+            assert.match(rows[1].textContent, /france \(Ty\)/);
+            assert.equal(rows[1].className, 'ranking-current');
+            assert.equal(document.querySelector('nav a[href="/ranking"]').getAttribute('aria-current'), 'page');
         });
     } finally {
         console.error = originalError;

@@ -70,3 +70,26 @@ class MeView(APIView):
             "username": request.user.username,
             "email": request.user.email,
         })
+
+
+class TokensView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .tokens import wallet_snapshot
+        return Response(wallet_snapshot(request.user.pk), headers={"Cache-Control": "no-store"})
+
+
+class RankingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import F
+        from .tokens import account_balances
+        leaders = account_balances().filter(is_active=True, email_verified_at__isnull=False,
+                                             email__iexact=F("email_verified_for"))
+        leaders = leaders.order_by("-tokens_total", "pk")[:10]
+        return Response([{"rank": rank, "username": user.username,
+                          "available": user.tokens_available, "frozen": user.tokens_frozen,
+                          "total": user.tokens_total}
+                         for rank, user in enumerate(leaders, 1)], headers={"Cache-Control": "no-store"})

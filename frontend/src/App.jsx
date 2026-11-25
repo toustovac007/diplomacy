@@ -7,6 +7,7 @@ import Home from "./pages/home";
 import GameDetail from "./pages/gameDetail";
 import OAuthCallback from "./pages/OAuthCallback";
 import VerifyEmail from "./pages/VerifyEmail";
+import Ranking from "./pages/Ranking";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -45,6 +46,7 @@ function AuthenticatedApp() {
 
     return (
         <Routes>
+            <Route path="/ranking" element={<Ranking />} />
             <Route
                 path="/"
                 element={<Home />}

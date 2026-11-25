@@ -4,6 +4,8 @@ from django.db import transaction
 from apps.notifications.services import send_game_finished_notifications
 
 from .supply_centers import get_supply_center_count
+from .tokens import settle_game
+from .phase_lock import lock_game
 
 SOLO_VICTORY_SUPPLY_CENTERS = 18
 
@@ -15,9 +17,10 @@ def find_solo_winner(game):
     return None
 
 
+@transaction.atomic
 def finish_game(game, winner=None, *, draw_participants=None):
     """Caller holds the game lock inside an atomic transaction."""
-    if game.status != "active":
+    if lock_game(game.pk).status != "active":
         raise ValueError("Only an active game can finish.")
     participants = list(draw_participants or [])
     if winner is None and (len(participants) < 2 or any(p.game_id != game.pk for p in participants)):
@@ -33,4 +36,6 @@ def finish_game(game, winner=None, *, draw_participants=None):
         # genuinely resolved phases, never these interrupted private orders.
         game.phases.filter(status="open").update(status="cancelled", resolved_at=game.finished_at)
     game.draw_proposals.filter(status="open").update(status="cancelled", resolved_at=game.finished_at)
+    settled = settle_game(game.pk)
+    game.tokens_settled_at = settled.tokens_settled_at
     transaction.on_commit(lambda game_id=game.pk: send_game_finished_notifications(game_id))

@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from .models import Game, GamePlayer, GamePhase
 from .serializer import GameSerializer, PublicGameSerializer, JoinByCodeSerializer
+from apps.users.tokens import reserve_stake
 
 import random
 
@@ -31,6 +32,7 @@ class GameListCreateView(generics.ListCreateAPIView):
             Game.objects
             .filter(players__user=self.request.user)
             .distinct()
+            .prefetch_related("players__user", "players__token_reservation")
             .order_by("-created_at")
         )
 
@@ -45,6 +47,7 @@ class PublicGameListView(generics.ListAPIView):
             .filter(status="waiting", is_public=True)
             .exclude(players__user=self.request.user)
             .distinct()
+            .prefetch_related("players__user", "players__token_reservation")
             .order_by("-created_at")
         )
 
@@ -83,10 +86,11 @@ class JoinGameView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        GamePlayer.objects.create(
+        player = GamePlayer.objects.create(
             game=game,
             user=request.user
         )
+        reserve_stake(game, player)
 
         serializer = GameSerializer(game, context={"request": request})
 
@@ -112,6 +116,7 @@ class GameDetailView(generics.RetrieveAPIView):
             Game.objects
             .filter(players__user=self.request.user)
             .distinct()
+            .prefetch_related("players__user", "players__token_reservation")
         )
 
 

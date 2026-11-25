@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from apps.games.models import Game, GamePhase
 from apps.games.services.victory import find_solo_winner, finish_game
+from apps.games.services.tokens import release_eliminated_stakes
 
 from apps.games.services.supply_centers import (
     update_supply_center_ownership,
@@ -26,6 +27,7 @@ def get_phase_duration_minutes(game, phase_type):
     return getattr(game, fields[phase_type])
 
 
+@transaction.atomic
 def create_phase(
     game,
     sequence,
@@ -33,6 +35,7 @@ def create_phase(
     season,
     phase_type,
 ):
+    release_eliminated_stakes(game)
     phase = GamePhase.objects.create(
         game=game,
         sequence=sequence,

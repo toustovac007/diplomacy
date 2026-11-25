@@ -9,6 +9,9 @@ class User(AbstractUser):
     NEW_USERNAME_MAX_LENGTH = 32
     email = models.EmailField(unique=True)
     last_game_created_at = models.DateTimeField(null=True, blank=True, editable=False)
+    tokens_available = models.PositiveBigIntegerField(default=1000, editable=False)
+    last_token_refill_at = models.DateTimeField(null=True, blank=True, editable=False)
+    token_refill_due_at = models.DateTimeField(null=True, blank=True, db_index=True, editable=False)
     email_verified_at = models.DateTimeField(null=True, blank=True)
     email_verified_for = models.EmailField(blank=True, default="")
 
@@ -41,6 +44,22 @@ class EmailVerification(models.Model):
     last_sent_at = models.DateTimeField(null=True)
     window_start = models.DateTimeField(null=True)
     send_count = models.PositiveIntegerField(default=0)
+
+
+class TokenEntry(models.Model):
+    """Movements relative to the account's one-time initial balance of 1000."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="token_entries")
+    game = models.ForeignKey("games.Game", null=True, on_delete=models.SET_NULL, related_name="token_entries")
+    kind = models.CharField(max_length=16, choices=[
+        ("stake", "Stake"), ("forfeit", "Elimination"),
+        ("settlement", "Settlement"), ("refill", "Minimum refill"),
+    ])
+    available_delta = models.BigIntegerField(default=0)
+    frozen_delta = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["pk"]
 
 
 class VerificationRequestLimit(models.Model):

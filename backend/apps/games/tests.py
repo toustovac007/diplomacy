@@ -746,9 +746,10 @@ class DrawMigrationTests(TransactionTestCase):
             waiting = OldGame.objects.create(name="Waiting", creator_id=user.pk)
             executor = MigrationExecutor(connection)
             executor.migrate(after)
-            self.assertEqual(Game.objects.get(pk=solo.pk).result_type, "solo")
-            self.assertIsNone(Game.objects.get(pk=active.pk).result_type)
-            self.assertIsNone(Game.objects.get(pk=waiting.pk).result_type)
+            MigratedGame = executor.loader.project_state(after).apps.get_model("games", "Game")
+            self.assertEqual(MigratedGame.objects.get(pk=solo.pk).result_type, "solo")
+            self.assertIsNone(MigratedGame.objects.get(pk=active.pk).result_type)
+            self.assertIsNone(MigratedGame.objects.get(pk=waiting.pk).result_type)
         finally:
             MigrationExecutor(connection).migrate(latest)
 

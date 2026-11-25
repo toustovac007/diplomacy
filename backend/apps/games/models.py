@@ -9,6 +9,8 @@ from apps.maps.models import Province, Coast
 
 
 class Game(models.Model):
+    STAKE_CHOICES = [(value, str(value)) for value in (100, 200, 300, 500, 800, 1000, 1500)]
+    SCORING_CHOICES = [("dss", "DSS"), ("sos", "SoS"), ("unranked", "Unranked")]
     STATUS_CHOICES = [
         ("waiting", "Čeká na hráče"),
         ("active", "Probíhá"),
@@ -43,6 +45,10 @@ class Game(models.Model):
 
     is_public = models.BooleanField(default=True)
     invite_code = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    token_stake = models.PositiveIntegerField(default=100, choices=STAKE_CHOICES)
+    scoring = models.CharField(max_length=8, default="dss", choices=SCORING_CHOICES)
+    token_pot = models.PositiveBigIntegerField(default=0, editable=False)
+    tokens_settled_at = models.DateTimeField(null=True, blank=True, editable=False)
     movement_duration_minutes = models.PositiveIntegerField(default=1440, validators=[MinValueValidator(1), MaxValueValidator(10080)])
     retreat_duration_minutes = models.PositiveIntegerField(default=720, validators=[MinValueValidator(1), MaxValueValidator(10080)])
     adjustment_duration_minutes = models.PositiveIntegerField(default=720, validators=[MinValueValidator(1), MaxValueValidator(10080)])
@@ -116,6 +122,18 @@ class GamePlayer(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.game.name}"
+
+
+class GameStake(models.Model):
+    player = models.OneToOneField(GamePlayer, on_delete=models.CASCADE, related_name="token_reservation")
+    amount = models.PositiveIntegerField()
+    status = models.CharField(max_length=10, default="locked", choices=[
+        ("locked", "Frozen"), ("forfeited", "Lost, still in pot"), ("settled", "Settled"),
+    ])
+    payout = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="stake_amount_positive")]
 
 
 class GamePhase(models.Model):

@@ -15,6 +15,9 @@ from apps.games.models import (
 
 
 class GamePlayerSerializer(serializers.ModelSerializer):
+    token_stake = serializers.IntegerField(source="token_reservation.amount", read_only=True, default=None)
+    token_status = serializers.CharField(source="token_reservation.status", read_only=True, default=None)
+    token_payout = serializers.IntegerField(source="token_reservation.payout", read_only=True, default=None)
     username = serializers.CharField(
         source="user.username",
         read_only=True
@@ -33,6 +36,7 @@ class GamePlayerSerializer(serializers.ModelSerializer):
             "country",
             "country_name",
             "joined_at",
+            "token_stake", "token_status", "token_payout",
         )
 
 
@@ -220,6 +224,7 @@ class GameSerializer(serializers.ModelSerializer):
             "turn_duration_minutes",
             "max_players",
             "is_public",
+            "token_stake", "scoring", "token_pot", "tokens_settled_at",
             "movement_duration_minutes",
             "retreat_duration_minutes",
             "adjustment_duration_minutes",
@@ -241,6 +246,7 @@ class GameSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
             "players",
+            "token_pot", "tokens_settled_at",
         )
 
     def create(self, validated_data):
@@ -276,7 +282,8 @@ class PublicGameSerializer(serializers.ModelSerializer):
     class Meta:
         model = Game
         fields = ("id", "name", "creator", "status", "players", "max_players", "is_public",
-                  "movement_duration_minutes", "retreat_duration_minutes", "adjustment_duration_minutes")
+                  "movement_duration_minutes", "retreat_duration_minutes", "adjustment_duration_minutes",
+                  "token_stake", "scoring", "token_pot")
 
 
 class JoinByCodeSerializer(serializers.Serializer):
