@@ -53,6 +53,7 @@ class TokenEntry(models.Model):
     kind = models.CharField(max_length=16, choices=[
         ("stake", "Stake"), ("forfeit", "Elimination"),
         ("settlement", "Settlement"), ("refill", "Minimum refill"),
+        ("refund", "Returned stake"),
     ])
     available_delta = models.BigIntegerField(default=0)
     frozen_delta = models.BigIntegerField(default=0)

@@ -23,6 +23,8 @@ export default function VictorySummary({ game }) {
     const color = COUNTRY_COLORS[winner?.country] ?? "var(--border)";
     return (
         <>
+            {game.termination_reason === "inactivity" && <p role="status">Hra skončila remízou po 10 vyhodnocených fázích za sebou bez odeslaného rozkazu.
+                {!shared.length && " Nezůstal žádný přeživší hráč; sázky byly vráceny."}</p>}
             <header className="victory-card" style={{ "--winner-color": color }}>
                 <div className="victory-heading">
                     <p className="victory-eyebrow">Konečný výsledek</p>

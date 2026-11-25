@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import DashboardShell from "../components/DashboardShell";
@@ -39,6 +40,7 @@ function backendError(error, fallback) {
 
 
 function Home() {
+    const location = useLocation();
     const { user, logout } = useAuth();
     const { wallet, walletError, refreshWallet } = useTokenWallet();
     const availableTokens = walletError ? null : wallet?.available;
@@ -200,6 +202,7 @@ function Home() {
                 {walletError && <p role="alert">{walletError} <button type="button" onClick={refreshWallet}>Zkusit znovu</button></p>}
                 {error && <p role="alert">{error}</p>}
                 {message && <p role="status">{message}</p>}
+                {!message && location.state?.notice && <p role="status">{location.state.notice}</p>}
             </div>
             <TokenRefillNotice wallet={wallet} />
             <div className="dashboard-main-grid">

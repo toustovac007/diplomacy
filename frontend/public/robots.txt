@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin/
+Disallow: /media/
+
+Sitemap: https://diplomacy.kube.sspu-opava.cz/sitemap.xml

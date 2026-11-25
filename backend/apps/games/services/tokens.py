@@ -9,22 +9,39 @@ from apps.users.tokens import lock_users, refill_or_schedule
 from .phase_lock import lock_game
 
 
+def refund_stake(game, stake, user):
+    """Caller holds the game and user locks. A refund is irreversible/idempotent."""
+    if stake.status == "refunded":
+        return
+    if stake.status != "locked":
+        raise ValueError("Only a frozen stake can be refunded.")
+    user.tokens_available += stake.amount
+    user.save(update_fields=["tokens_available"])
+    stake.status, stake.payout = "refunded", stake.amount
+    stake.save(update_fields=["status", "payout"])
+    TokenEntry.objects.create(user=user, game=game, kind="refund",
+        available_delta=stake.amount, frozen_delta=-stake.amount)
+
+
 @transaction.atomic
 def release_eliminated_stakes(game):
     """Called after a stable phase transition, inside the game's transaction.
 
-    Dislodged units still count. Unranked stakes remain refundable, so are not lost.
+    Dislodged units still count. Unranked stakes are returned immediately.
     Forfeited stakes stop counting toward personal wealth but stay in the pot.
     """
     game = lock_game(game.pk)
-    if game.status != "active" or game.scoring == "unranked":
+    if game.status != "active":
         return
     stakes = list(GameStake.objects.filter(player__game=game, status="locked").annotate(
         has_centers=Exists(SupplyCenterOwnership.objects.filter(owner_id=OuterRef("player_id"), game=game)),
         has_units=Exists(Unit.objects.filter(owner_id=OuterRef("player_id"), game=game)),
     ).filter(has_centers=False, has_units=False).select_related("player"))
-    lock_users([stake.player.user_id for stake in stakes])
+    users = lock_users([stake.player.user_id for stake in stakes])
     for stake in stakes:
+        if game.scoring == "unranked":
+            refund_stake(game, stake, users[stake.player.user_id])
+            continue
         stake.status = "forfeited"
         stake.save(update_fields=["status"])
         TokenEntry.objects.create(user_id=stake.player.user_id, game=game,
@@ -39,6 +56,9 @@ def allocate_pot(game, stakes):
     if not stakes:
         return {}
     if game.scoring == "unranked":
+        return {stake.player_id: stake.amount for stake in stakes if stake.status != "refunded"}
+    if game.termination_reason == "inactivity" and not game.draw_participants.exists():
+        # No power survives: nobody can receive a ranked victory, so return stakes.
         return {stake.player_id: stake.amount for stake in stakes}
     if game.result_type == "solo":
         if game.winner_id not in {stake.player_id for stake in stakes}:
@@ -74,6 +94,8 @@ def settle_game(game_id):
     users = lock_users([stake.player.user_id for stake in stakes])
     payouts = allocate_pot(game, stakes)
     for stake in stakes:
+        if stake.status == "refunded":
+            continue
         user = users[stake.player.user_id]
         payout = payouts.get(stake.player_id, 0)
         frozen_delta = -stake.amount if stake.status == "locked" else 0

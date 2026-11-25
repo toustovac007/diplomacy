@@ -49,6 +49,9 @@ class Game(models.Model):
     scoring = models.CharField(max_length=8, default="dss", choices=SCORING_CHOICES)
     token_pot = models.PositiveBigIntegerField(default=0, editable=False)
     tokens_settled_at = models.DateTimeField(null=True, blank=True, editable=False)
+    inactive_phase_count = models.PositiveIntegerField(default=0, editable=False)
+    termination_reason = models.CharField(max_length=16, blank=True, default="", editable=False,
+        choices=[("", "Normal result"), ("inactivity", "Ten inactive phases")])
     movement_duration_minutes = models.PositiveIntegerField(default=1440, validators=[MinValueValidator(1), MaxValueValidator(10080)])
     retreat_duration_minutes = models.PositiveIntegerField(default=720, validators=[MinValueValidator(1), MaxValueValidator(10080)])
     adjustment_duration_minutes = models.PositiveIntegerField(default=720, validators=[MinValueValidator(1), MaxValueValidator(10080)])
@@ -129,6 +132,7 @@ class GameStake(models.Model):
     amount = models.PositiveIntegerField()
     status = models.CharField(max_length=10, default="locked", choices=[
         ("locked", "Frozen"), ("forfeited", "Lost, still in pot"), ("settled", "Settled"),
+        ("refunded", "Returned early"),
     ])
     payout = models.PositiveBigIntegerField(default=0)
 
@@ -137,6 +141,8 @@ class GameStake(models.Model):
 
 
 class GamePhase(models.Model):
+    has_submitted_orders = models.BooleanField(default=False, editable=False)
+    inactivity_checked = models.BooleanField(default=False, editable=False)
     # None denotes legacy/unavailable history; [] is a complete empty phase.
     resolved_orders_snapshot = models.JSONField(null=True, default=None, blank=True)
     resolved_state_snapshot = models.JSONField(null=True, default=None, blank=True)

@@ -3,7 +3,7 @@ import PhaseReadinessPanel from "../components/game/PhaseReadinessPanel";
 import GameHistory from "../components/game/GameHistory";
 import historicalOrderLabel from "../components/game/historicalOrderLabel";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -54,14 +54,17 @@ function GameDetail() {
     const [mapTarget, setMapTarget] =
         useState("");
     const { gameId } = useParams();
+    const navigate = useNavigate();
     const { user, logout } = useAuth();
     const [starting, setStarting] = useState(false);
     const startPending = useRef(false);
+    const [deleting, setDeleting] = useState(false);
+    const deletePending = useRef(false);
 
     const [game, setGame] = useState(null);
     const [lobbyRefreshError, setLobbyRefreshError] = useState(null);
     useEffect(() => {
-        if (game?.status !== "waiting" || String(game.id) !== gameId || starting) return;
+        if (game?.status !== "waiting" || String(game.id) !== gameId || starting || deleting) return;
         const controller = new AbortController();
         let pending = false;
         const refreshLobby = async () => {
@@ -77,7 +80,11 @@ function GameDetail() {
                 setGame((current) => current?.status === "waiting" && String(current.id) === gameId
                     ? response.data : current);
                 setLobbyRefreshError(null);
-            } catch {
+            } catch (error) {
+                if (!controller.signal.aborted && error.response?.status === 404) {
+                    navigate("/", { replace: true, state: { notice: "Čekající hra už neexistuje. Sázky byly vráceny." } });
+                    return;
+                }
                 if (!controller.signal.aborted) {
                     setLobbyRefreshError({ gameId, message: "Lobby se nepodařilo aktualizovat. Připojení zkusíme znovu." });
                 }
@@ -90,7 +97,7 @@ function GameDetail() {
             clearInterval(timer);
             controller.abort();
         };
-    }, [gameId, game?.id, game?.status, starting]);
+    }, [gameId, game?.id, game?.status, starting, deleting, navigate]);
 
     const [focusGameId, setFocusGameId] = useState(null);
     const [focusPane, setFocusPane] = useState("map");
@@ -766,7 +773,7 @@ const handleCoastSelect = async (coastCode) => {
 
 
     const handleStartGame = async () => {
-        if (startPending.current) return;
+        if (startPending.current || deletePending.current) return;
         startPending.current = true;
         setStarting(true);
         setError("");
@@ -798,6 +805,29 @@ const handleCoastSelect = async (coastCode) => {
     };
 
 
+    const handleDeleteGame = async () => {
+        if (deletePending.current || startPending.current) return;
+        deletePending.current = true;
+        setDeleting(true);
+        setError("");
+        setMessage("");
+        try {
+            await api.delete(`games/${gameId}/`, { timeout: 15000 });
+            navigate("/", { replace: true, state: { notice: "Hra byla smazána a sázky vráceny všem hráčům." } });
+        } catch (failure) {
+            if (failure.response?.status === 404) {
+                navigate("/", { replace: true, state: { notice: "Čekající hra už neexistuje. Sázky byly vráceny." } });
+            } else if (failure.response?.status === 409) {
+                setError(failure.response.data?.detail || "Hra už byla spuštěna.");
+                try { const response = await api.get(`games/${gameId}/`); setGame(response.data); }
+                catch { /* Keep the error and allow retry if the refresh fails. */ }
+            } else setError(failure.response?.data?.detail || "Hru se nepodařilo smazat. Zkus to znovu.");
+        } finally {
+            deletePending.current = false;
+            setDeleting(false);
+        }
+    };
+
     if (loading) {
         return <p>Načítání hry...</p>;
     }
@@ -820,6 +850,7 @@ const handleCoastSelect = async (coastCode) => {
         return <WaitingLobby key={`${game.id}:${game.invite_code ?? ""}`} game={game}
             username={user?.username} onLogout={logout} onStart={handleStartGame}
             starting={starting} error={error} message={message}
+            onDelete={handleDeleteGame} deleting={deleting}
             refreshError={lobbyRefreshError?.gameId === gameId ? lobbyRefreshError.message : ""} />;
     }
 

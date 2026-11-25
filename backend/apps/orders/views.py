@@ -52,7 +52,9 @@ class EditableOrdersMixin:
         phase = lock_phase(self.get_phase())
         player = get_object_or_404(GamePlayer, game=game, user=request.user)
         ensure_player_orders_editable(phase, player)
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        GamePhase.objects.filter(pk=phase.pk).update(has_submitted_orders=True)
+        return response
 
 
 class PreviousResolvedOrdersView(APIView):
@@ -214,6 +216,7 @@ class RetreatOrderListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        GamePhase.objects.filter(pk=phase.pk).update(has_submitted_orders=True)
 
         # DISBAND (or a retreat collision) deletes the unit and its orders.
         # Return the saved decision snapshot, not a deleted model instance.

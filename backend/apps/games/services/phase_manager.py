@@ -5,6 +5,7 @@ from django.utils import timezone
 from apps.games.models import Game, GamePhase
 from apps.games.services.victory import find_solo_winner, finish_game
 from apps.games.services.tokens import release_eliminated_stakes
+from apps.games.services.lifecycle import finish_if_inactive
 
 from apps.games.services.supply_centers import (
     update_supply_center_ownership,
@@ -58,14 +59,20 @@ def create_phase(
     return phase
 
 
+@transaction.atomic
 def create_next_after_movement(
     movement_phase,
     has_dislodged_units,
 ):
-    game = movement_phase.game
+    game = Game.objects.select_for_update().get(pk=movement_phase.game_id)
+    movement_phase.game = game
+    if game.status == "finished":
+        return None
     next_sequence = movement_phase.sequence + 1
 
     if has_dislodged_units:
+        if finish_if_inactive(game, movement_phase):
+            return None
         return create_phase(
             game=game,
             sequence=next_sequence,
@@ -87,6 +94,8 @@ def create_next_after_retreat(phase):
     next_sequence = phase.sequence + 1
 
     if phase.season == "spring":
+        if finish_if_inactive(game, phase):
+            return None
         return create_phase(
             game=game,
             sequence=next_sequence,
@@ -103,6 +112,9 @@ def create_next_after_retreat(phase):
         winner = find_solo_winner(game)
         if winner is not None:
             finish_game(game, winner)
+            return None
+
+        if finish_if_inactive(game, phase):
             return None
 
         if all(get_adjustment_delta(player) == 0 for player in game.players.all()):
@@ -125,6 +137,7 @@ def create_next_after_retreat(phase):
     raise ValueError(
         f"Neplatná sezóna pro přechod fáze: {phase.season}"
     )
+@transaction.atomic
 def create_next_after_adjustment(phase):
     if phase.phase_type != "adjustment":
         raise ValueError(
@@ -136,8 +149,11 @@ def create_next_after_adjustment(phase):
             "Adjustment musí být Winter fáze."
         )
 
+    game = Game.objects.select_for_update().get(pk=phase.game_id)
+    if game.status == "finished" or finish_if_inactive(game, phase):
+        return None
     return create_phase(
-        game=phase.game,
+        game=game,
         sequence=phase.sequence + 1,
         year=phase.year + 1,
         season="spring",

@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 from .models import Game, GamePlayer, GamePhase
 from .serializer import GameSerializer, PublicGameSerializer, JoinByCodeSerializer
 from apps.users.tokens import reserve_stake
+from .services.lifecycle import cancel_waiting_game
+from .services.phase_lock import phase_transaction
 
 import random
 
@@ -107,9 +109,14 @@ class JoinByCodeView(JoinGameView):
         return get_object_or_404(Game.objects.select_for_update(), **serializer.validated_data)
 
 
-class GameDetailView(generics.RetrieveAPIView):
+class GameDetailView(generics.RetrieveDestroyAPIView):
     serializer_class = GameSerializer
     permission_classes = [IsAuthenticated]
+
+    @phase_transaction
+    def destroy(self, request, *args, **kwargs):
+        cancel_waiting_game(kwargs["pk"], actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
         return (

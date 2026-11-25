@@ -36,6 +36,8 @@ test('one chat and polling owner survives phase transitions and navigation', asy
     let gameRequest;
     let startRequest;
     let rejectStart = false;
+    let deleteRequest;
+    let rejectDelete = false;
     const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     const setClipboard = (value) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value });
     let proposal = null;
@@ -48,6 +50,12 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         user: { username: 'france' },
         record: (...entry) => diagnostics.push(entry),
         api: {
+            async delete(url) {
+                requests.push(`DELETE ${url}`);
+                await new Promise((resolve) => { deleteRequest = resolve; });
+                if (rejectDelete) throw { response: { data: { detail: 'Smazání selhalo.' } } };
+                return { data: {} };
+            },
             async get(url, config) {
                 requests.push(url);
                 if (url === 'games/1/' && gameRequest) return gameRequest(config);
@@ -302,6 +310,7 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         assert.equal(invitation().querySelector('[role=status]').textContent, '');
         assert.match(document.body.textContent, /Čeká se, až zakladatel/);
         assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent.includes('Spustit hru')), false);
+        assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent === 'Smazat hru'), false);
         const memberLobbyTimer = [...timers.values()][0];
         const memberMounts = diagnostics.filter((entry) => entry[0] === 'GameDetail' && entry[1] === 'MOUNT').length;
         waiting = false;
@@ -357,6 +366,52 @@ test('one chat and polling owner survives phase transitions and navigation', asy
         await click('Anglie');
         assert.equal([...timers.values()].filter((timer) => timer.ms === 5000).length, 1);
         assert.equal(warnings.filter((w) => w.includes('same key')).length, 0);
+        await click('Zpět na moje hry');
+        waiting = true;
+        await click('Return to game');
+        gameRequest = async () => { throw { response: { status: 404 } }; };
+        await act(async () => [...timers.values()].find((timer) => timer.ms === 5000).callback());
+        assert.equal(document.querySelector('.waiting-lobby'), null);
+        assert.equal(timers.size, 0);
+        gameRequest = undefined;
+        await click('Return to game');
+        const deletes = () => requests.filter((request) => request === 'DELETE games/1/').length;
+        [...document.querySelectorAll('button')].find((button) => button.textContent === 'Smazat hru').focus();
+        await click('Smazat hru');
+        let dialog = document.querySelector('[role="alertdialog"]');
+        assert.ok(dialog);
+        assert.equal(dialog.getAttribute('aria-modal'), 'true');
+        assert.match(dialog.textContent, /sázka vrátí/);
+        assert.equal(document.activeElement.textContent, 'Ponechat hru');
+        await act(async () => dialog.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape',bubbles:true})));
+        assert.equal(document.querySelector('[role="alertdialog"]'), null);
+        assert.equal(document.activeElement.textContent, 'Smazat hru');
+        assert.equal(deletes(), 0);
+        await click('Smazat hru');
+        dialog = document.querySelector('[role="alertdialog"]');
+        await act(async () => document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Tab',shiftKey:true,bubbles:true,cancelable:true})));
+        assert.equal(document.activeElement.textContent, 'Ano, smazat hru');
+        await click('Ponechat hru');
+        assert.equal(deletes(), 0);
+        await click('Smazat hru');
+        rejectDelete = true;
+        await click('Ano, smazat hru');
+        dialog = document.querySelector('[role="alertdialog"]');
+        assert.equal(dialog.getAttribute('aria-busy'), 'true');
+        assert.ok([...dialog.querySelectorAll('button')].every((button) => button.disabled));
+        assert.equal(timers.size, 0);
+        await act(async () => dialog.querySelectorAll('button')[1].click());
+        assert.equal(deletes(), 1);
+        await act(async () => deleteRequest());
+        assert.match(dialog.querySelector('[role="alert"]').textContent, /Smazání selhalo/);
+        assert.ok([...dialog.querySelectorAll('button')].every((button) => !button.disabled));
+        rejectDelete = false;
+        await click('Ano, smazat hru');
+        await act(async () => deleteRequest());
+        assert.equal(deletes(), 2);
+        assert.equal(document.querySelector('.waiting-lobby'), null);
+        assert.equal(document.querySelector('[role="alertdialog"]'), null);
+        assert.equal(timers.size, 0);
     } finally {
         if (root) await act(async () => root.unmount());
         console.log = originalLog;

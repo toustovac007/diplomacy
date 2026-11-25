@@ -23,8 +23,9 @@ escrow. Clients cannot write balances, pots, settlement times or payouts.
 settlements and refills. The opening 1,000 is implicit, not a recurring ledger
 event. Available balance reconciles to 1,000 plus available deltas, and frozen
 balance to frozen deltas while game history is retained. Direct deletion/manual
-modification of funded games or accounts is unsupported. There is no public game
-deletion endpoint. Future cancellation/leave features must refund transactionally.
+modification of funded games or accounts is unsupported. Creators can delete
+waiting games through the authenticated DELETE endpoint, which refunds all
+stakes transactionally. Automatic 48-hour lobby expiry uses the same service.
 
 ## Results
 
@@ -35,13 +36,16 @@ deletion endpoint. Future cancellation/leave features must refund transactionall
   since a power may survive on units alone.
 - Exact integer arithmetic; all remaining tokens go to the recipient with the
   most centers. Ties use the earliest membership.
-- Unranked: everyone gets their original stake back, including eliminated players.
+- Unranked: eliminated players are refunded immediately. Remaining participants
+  get their stake back at completion; early refunds are never paid twice.
 
 Stable phase transitions mark a ranked player's reservation `forfeited` when
 they have no centers AND no units. Dislodged/retreating units still count. The
 stake disappears from personal frozen wealth but stays in the pot. Unranked
-stakes remain frozen because they will be refunded. Elimination alone does not
-trigger a minimum refill.
+stakes are returned immediately on elimination, preserving their owner's wealth.
+Elimination alone does not trigger a minimum refill. `token_pot_remaining`
+excludes early refunds and becomes zero after settlement; active UI uses this
+value, while `token_pot` retains the historical total accepted stakes.
 
 Finishing and payment are one transaction; email callbacks run after commit.
 Game operations lock the game then users in ascending PK order. Settlement

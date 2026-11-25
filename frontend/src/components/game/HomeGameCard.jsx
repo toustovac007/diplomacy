@@ -24,7 +24,7 @@ export default function HomeGameCard({ game, variant, currentUsername, available
         </div>}
         <dl className="dashboard-game-stats">
             {game.token_stake != null && <div><dt>Sázka / bodování</dt><dd>{game.token_stake} · {SCORING_LABELS[game.scoring]}</dd></div>}
-            {game.token_pot != null && <div><dt>Bank</dt><dd>{game.token_pot} tokenů</dd></div>}
+            {game.token_pot != null && <div><dt>Bank</dt><dd>{finished ? game.token_pot : game.token_pot_remaining ?? game.token_pot} tokenů</dd></div>}
             {game.players && <div><dt>Hráči</dt><dd>{game.players.length} / {game.max_players}</dd></div>}
             {(game.movement_duration_minutes ?? game.turn_duration_minutes) != null && <div><dt>Pohyby</dt><dd>{formatDuration(game.movement_duration_minutes ?? game.turn_duration_minutes)}</dd></div>}
             {game.retreat_duration_minutes != null && <div><dt>Ústupy</dt><dd>{formatDuration(game.retreat_duration_minutes)}</dd></div>}

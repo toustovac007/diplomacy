@@ -163,6 +163,20 @@ class SupplyCenterOwnershipSerializer(serializers.ModelSerializer):
 
 
 class GameSerializer(serializers.ModelSerializer):
+    waiting_expires_at = serializers.SerializerMethodField()
+    token_pot_remaining = serializers.SerializerMethodField()
+
+    def get_waiting_expires_at(self, game):
+        from .services.lifecycle import lobby_expires_at
+        return lobby_expires_at(game).isoformat() if game.status == "waiting" else None
+
+    def get_token_pot_remaining(self, game):
+        from django.db.models import Sum
+        from .models import GameStake
+        if game.tokens_settled_at is not None:
+            return 0
+        return GameStake.objects.filter(player__game=game, status__in=["locked", "forfeited"]).aggregate(
+            total=Sum("amount"))["total"] or 0
     turn_duration_minutes = serializers.IntegerField(min_value=1, max_value=10080, required=False)
 
     def validate_name(self, value):
@@ -225,6 +239,7 @@ class GameSerializer(serializers.ModelSerializer):
             "max_players",
             "is_public",
             "token_stake", "scoring", "token_pot", "tokens_settled_at",
+            "token_pot_remaining", "waiting_expires_at", "inactive_phase_count", "termination_reason",
             "movement_duration_minutes",
             "retreat_duration_minutes",
             "adjustment_duration_minutes",
@@ -247,6 +262,7 @@ class GameSerializer(serializers.ModelSerializer):
             "created_at",
             "players",
             "token_pot", "tokens_settled_at",
+            "inactive_phase_count", "termination_reason",
         )
 
     def create(self, validated_data):

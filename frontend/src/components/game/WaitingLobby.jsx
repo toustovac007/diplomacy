@@ -3,10 +3,13 @@ import { Link } from "react-router-dom";
 import DashboardShell from "../DashboardShell";
 import GameStatusBadge from "./GameStatusBadge";
 import formatDuration from "./formatDuration";
+import ConfirmGameDeletion from "./ConfirmGameDeletion";
+import { SCORING_LABELS } from "../tokens/tokenRules";
 import "./waitingLobby.css";
 
-export default function WaitingLobby({ game, username, onLogout, onStart, starting, error, message, refreshError }) {
+export default function WaitingLobby({ game, username, onLogout, onStart, starting, onDelete, deleting, error, message, refreshError }) {
     const [copyMessage, setCopyMessage] = useState("");
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const copyCode = async () => {
         try {
             await navigator.clipboard.writeText(game.invite_code);
@@ -22,6 +25,9 @@ export default function WaitingLobby({ game, username, onLogout, onStart, starti
         ["Pohyby", formatDuration(game.movement_duration_minutes)],
         ["Ústupy", formatDuration(game.retreat_duration_minutes)],
         ["Zimní úpravy", formatDuration(game.adjustment_duration_minutes)],
+        ["Sázka na hráče", `${game.token_stake ?? 100} tokenů`],
+        ["Bodování", SCORING_LABELS[game.scoring ?? "dss"]],
+        ["Bank", `${game.token_pot_remaining ?? game.token_pot ?? 0} tokenů`],
     ];
     return <DashboardShell username={username} onLogout={onLogout}>
         <main className="waiting-lobby">
@@ -49,12 +55,14 @@ export default function WaitingLobby({ game, username, onLogout, onStart, starti
                     <div className="waiting-lobby__start">
                         {game.creator === username ? <>
                             <p>Jsi zakladatel této hry.</p>
-                            <button type="button" onClick={onStart} disabled={starting || game.players.length < 2}>
+                            <button type="button" onClick={onStart} disabled={starting || deleting || confirmDelete || game.players.length < 2}>
                                 {starting ? "Spouštím…" : "Spustit hru"}
                             </button>
                             {game.players.length < 2 && <p>Pro spuštění jsou potřeba alespoň 2 hráči.</p>}
+                            <button className="waiting-lobby__delete" type="button" disabled={starting || deleting}
+                                onClick={() => setConfirmDelete(true)}>Smazat hru</button>
                         </> : <p>Čeká se, až zakladatel spustí hru.</p>}
-                        {error && <p role="alert">{error}</p>}
+                        {error && !confirmDelete && <p role="alert">{error}</p>}
                         {message && <p role="status">{message}</p>}
                     </div>
                 </section>
@@ -71,9 +79,14 @@ export default function WaitingLobby({ game, username, onLogout, onStart, starti
                         <dl className="waiting-lobby__settings">
                             {settings.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
                         </dl>
+                        <p className="waiting-lobby__expiry">Pokud se 48 hodin nepřipojí nový hráč, hra se automaticky smaže a sázky se vrátí.
+                            {game.waiting_expires_at && <> Bez dalšího připojení vyprší <time dateTime={game.waiting_expires_at}>
+                                {new Date(game.waiting_expires_at).toLocaleString("cs-CZ")}</time>.</>}</p>
                     </section>
                 </div>
             </div>
         </main>
+        {confirmDelete && <ConfirmGameDeletion gameName={game.name} deleting={deleting} error={error}
+            onCancel={() => setConfirmDelete(false)} onConfirm={onDelete} />}
     </DashboardShell>;
 }

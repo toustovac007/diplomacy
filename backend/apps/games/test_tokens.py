@@ -29,7 +29,8 @@ class TokenTests(TestCase):
         return client
 
     def game(self, count=3, stake=100, scoring="dss", *, users=None, status="active"):
-        users = users or [self.user(f"player{User.objects.count() + i}") for i in range(count)]
+        first = User.objects.count()
+        users = users or [self.user(f"player{first + i}") for i in range(count)]
         with transaction.atomic():
             game = Game.objects.create(name="Token game", creator=users[0], token_stake=stake,
                                         scoring=scoring, status=status)
@@ -169,7 +170,9 @@ class TokenTests(TestCase):
     def test_unranked_refunds_everyone_even_after_elimination_and_solo(self):
         game, players = self.game(stake=1000, scoring="unranked")
         release_eliminated_stakes(game)
-        self.assertEqual(wallet_snapshot(players[1].user_id)["frozen"], 1000)
+        self.assertEqual(wallet_snapshot(players[1].user_id)["frozen"], 0)
+        self.assertEqual(wallet_snapshot(players[1].user_id)["available"], 1000)
+        self.assertEqual(GameStake.objects.get(player=players[1]).status, "refunded")
         finish_game(game, players[0])
         for player in players:
             self.assertEqual(wallet_snapshot(player.user_id)["available"], 1000)

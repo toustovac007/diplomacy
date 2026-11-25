@@ -18,18 +18,22 @@ def find_solo_winner(game):
 
 
 @transaction.atomic
-def finish_game(game, winner=None, *, draw_participants=None):
+def finish_game(game, winner=None, *, draw_participants=None, termination_reason=""):
     """Caller holds the game lock inside an atomic transaction."""
     if lock_game(game.pk).status != "active":
         raise ValueError("Only an active game can finish.")
     participants = list(draw_participants or [])
-    if winner is None and (len(participants) < 2 or any(p.game_id != game.pk for p in participants)):
+    if termination_reason not in ("", "inactivity"):
+        raise ValueError("Unknown termination reason.")
+    minimum = 0 if termination_reason == "inactivity" else 2
+    if winner is None and (len(participants) < minimum or any(p.game_id != game.pk for p in participants)):
         raise ValueError("A draw requires at least two players of this game.")
     game.status = "finished"
     game.result_type = "solo" if winner is not None else "draw"
     game.winner = winner
     game.finished_at = timezone.now()
-    game.save(update_fields=["status", "result_type", "winner", "finished_at"])
+    game.termination_reason = termination_reason
+    game.save(update_fields=["status", "result_type", "winner", "finished_at", "termination_reason"])
     game.draw_participants.set([] if winner is not None else participants)
     if winner is None:
         # No adjudication and no snapshot: history continues to select only
