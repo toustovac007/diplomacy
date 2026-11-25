@@ -144,6 +144,15 @@ class OAuthTests(TestCase):
         token_request = next(r for r in self.http_calls if r.url.endswith("/access_token"))
         self.assertIn("code_verifier=", token_request.body)
 
+    def test_new_provider_username_respects_length_limit(self):
+        self.profile['login']='x'*100
+        User.objects.create_user(username='x'*23,email='other@example.com')
+        self.start('github')
+        self.assertIn('ticket',self.callback('github'))
+        username=SocialIdentity.objects.get().user.username
+        self.assertLessEqual(len(username),32)
+        self.assertTrue(username.startswith('x'*23+'_'))
+
     def test_github_email_verification_and_deterministic_preference(self):
         self.emails[0]["verified"] = False
         self.start("github")

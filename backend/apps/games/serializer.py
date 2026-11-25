@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db import transaction
+import unicodedata
 from rest_framework import serializers
 
 from .models import Game, GamePlayer, GamePhase, Unit
@@ -161,6 +161,11 @@ class SupplyCenterOwnershipSerializer(serializers.ModelSerializer):
 class GameSerializer(serializers.ModelSerializer):
     turn_duration_minutes = serializers.IntegerField(min_value=1, max_value=10080, required=False)
 
+    def validate_name(self, value):
+        if any(unicodedata.category(character).startswith("C") for character in value):
+            raise serializers.ValidationError("Název hry nesmí obsahovat řídicí ani neviditelné formátovací znaky.")
+        return value
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get("request")
@@ -238,8 +243,8 @@ class GameSerializer(serializers.ModelSerializer):
             "players",
         )
 
-    @transaction.atomic
     def create(self, validated_data):
+        from .services.creation import create_game
         user = self.context["request"].user
         # Legacy API clients may still submit one duration; deadlines use only
         # the three phase settings after creation.
@@ -248,17 +253,7 @@ class GameSerializer(serializers.ModelSerializer):
             for phase_type in ("movement", "retreat", "adjustment"):
                 validated_data.setdefault(f"{phase_type}_duration_minutes", legacy_duration)
 
-        game = Game.objects.create(
-            creator=user,
-            **validated_data
-        )
-
-        GamePlayer.objects.create(
-            game=game,
-            user=user
-        )
-
-        return game
+        return create_game(user, validated_data)
 
     def get_current_phase(self, obj):
         phase = (

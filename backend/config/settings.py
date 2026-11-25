@@ -176,6 +176,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 
 AUTH_USER_MODEL = "users.User"
+GAME_CREATE_COOLDOWN_SECONDS = env_int("GAME_CREATE_COOLDOWN_SECONDS", 10, minimum=1, maximum=3600)
+GAME_MAX_OPEN_CREATED = env_int("GAME_MAX_OPEN_CREATED", 10, minimum=1, maximum=1000)
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),

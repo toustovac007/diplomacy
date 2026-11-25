@@ -1,5 +1,9 @@
 # Security hardening v1 — 2026-10-22
 
+The follow-up SQL input review and creator quotas (2026-11-25) are documented in
+`SQL_AND_CREATION_SECURITY.md`. Current email ownership enforcement is documented
+in `EMAIL_VERIFICATION.md`; the older findings below describe their original scope.
+
 This is a bounded source/configuration and authorization review, not a penetration
 test or a claim of production readiness. No gameplay rules were changed.
 

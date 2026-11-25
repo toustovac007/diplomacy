@@ -39,6 +39,7 @@ export {default as Register} from '../../src/pages/register.jsx';`);
             React.createElement(Register, { onBackToLogin: () => back++ }))));
         assert.deepEqual([...document.querySelectorAll('input')].map((i) => i.name), ['username', 'email', 'password', 'passwordAgain']);
         for (const label of document.querySelectorAll('label')) assert.ok(label.control.required);
+        assert.equal(document.querySelector('input[name="username"]').maxLength,32);
         assert.equal(document.querySelectorAll('.login-artwork[aria-hidden="true"] img[alt=""]').length, 2);
         assert.equal(document.querySelector('button[type="submit"]').textContent.trim(), 'Vytvořit účet');
         await act(async () => document.querySelector('button[type="button"]').click());

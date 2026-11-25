@@ -14,7 +14,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("username", "email", "password")
-        extra_kwargs = {"email": {"validators": []}}
+        extra_kwargs = {"email": {"validators": []}, "username": {"max_length": User.NEW_USERNAME_MAX_LENGTH}}
 
     def validate_email(self, value):
         # Same case-insensitive policy already used by OAuth account lookup.

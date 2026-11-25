@@ -71,6 +71,7 @@ function Register({ onBackToLogin }) {
                         <label htmlFor="register-username">Uživatelské jméno</label>
                         <input
                             id="register-username"
+                            maxLength={32}
                             name="username"
                             autoComplete="username"
                             type="text"

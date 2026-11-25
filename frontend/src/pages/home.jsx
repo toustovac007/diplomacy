@@ -57,6 +57,8 @@ function Home() {
 
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
+    const [creating, setCreating] = useState(false);
+    const creationFlight = useRef(false);
 
 
     const loadGames = async () => {
@@ -98,6 +100,7 @@ function Home() {
 
     const handleCreateGame = async (event) => {
         event.preventDefault();
+        if (creationFlight.current) return;
         createPanel.current.open = true;
 
         setError("");
@@ -109,6 +112,8 @@ function Home() {
         }
 
         try {
+            creationFlight.current = true;
+            setCreating(true);
             await api.post("games/", {
                 name: name,
                 ...settings,
@@ -125,6 +130,9 @@ function Home() {
             console.error("API request failed", error.response?.status);
             createPanel.current.open = true;
             setError(backendError(error, "Hru se nepodařilo vytvořit."));
+        } finally {
+            creationFlight.current = false;
+            setCreating(false);
         }
     };
 
@@ -218,6 +226,7 @@ function Home() {
 
                     <input
                         id="game-name"
+                        maxLength={100}
                         type="text"
                         value={name}
                         onChange={(event) =>
@@ -249,8 +258,8 @@ function Home() {
                     </select>
                 </div>)}
 
-                <button type="submit">
-                    Vytvořit hru
+                <button type="submit" disabled={creating}>
+                    {creating ? "Vytvářím..." : "Vytvořit hru"}
                 </button>
             </form>
 

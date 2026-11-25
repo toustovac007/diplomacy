@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -315,6 +315,7 @@ class SoloVictoryTests(APITestCase):
         self.assertFalse(SupplyCenterOwnership.objects.filter(game=self.game, province__code="BEL", owner=self.player).exists())
 
 
+@override_settings(GAME_CREATE_COOLDOWN_SECONDS=0)
 class GameSettingsTests(APITestCase):
     @classmethod
     def setUpTestData(cls):

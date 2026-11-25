@@ -6,7 +6,9 @@ from django.utils import timezone
 
 
 class User(AbstractUser):
+    NEW_USERNAME_MAX_LENGTH = 32
     email = models.EmailField(unique=True)
+    last_game_created_at = models.DateTimeField(null=True, blank=True, editable=False)
     email_verified_at = models.DateTimeField(null=True, blank=True)
     email_verified_for = models.EmailField(blank=True, default="")
 

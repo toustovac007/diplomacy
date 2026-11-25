@@ -23,7 +23,7 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
     const solo = make(3, 'finished', { result_type: 'solo', winner: player, finished_at: '2026-10-19T12:00:00Z' });
     const draw = make(4, 'finished', { result_type: 'draw', draw_participants: [player, { country_name: 'Anglie' }], finished_at: '2026-10-20T12:00:00Z' });
     const publicGame = make(5, 'waiting', { creator: 'other', players: [], invite_code: 'must-not-be-shown' });
-    let own = [active, waiting, solo, draw], joinable = [publicGame], failCreate = false;
+    let own = [active, waiting, solo, draw], joinable = [publicGame], failCreate = false, createGate = null, createDetail = '';
     const calls = [];
     const preferences = Object.fromEntries(['email_phase_started', 'email_deadline_reminder', 'email_chat_message', 'email_draw_events', 'email_game_finished'].map((field) => [field, true]));
     globalThis.__homeTest = { logout() {}, api: {
@@ -39,6 +39,8 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             if (url === 'games/5/join/') { own = [...own, { ...publicGame, players: [player] }]; joinable = []; }
             else if (url === 'games/join-by-code/') own = [...own, make(6, 'waiting', { is_public: false, invite_code: payload.invite_code })];
             else if (url === 'games/') {
+                if (createGate) await createGate;
+                if (createDetail) throw { response: { status: 429, data: { detail: createDetail } } };
                 if (failCreate) throw { response: { data: { name: ['Tento název nelze použít.'] } } };
                 own = [...own, make(Math.max(...own.map((game) => game.id), 0) + 1, 'waiting', { ...payload, invite_code: 'created-private-code' })];
             } else throw new Error(url);
@@ -164,6 +166,31 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             for (const [minutes, label] of [[60, '1 hodina'], [120, '2 hodiny'], [360, '6 hodin'], [720, '12 hodin'], [1440, '24 hodin'], [2880, '48 hodin'], [4320, '72 hodin'], [90, '90 min'], [null, '—']]) {
                 assert.equal(formatDuration(minutes), label);
             }
+        });
+        await t.test('creation blocks duplicate in-flight submits and displays backend limits', async () => {
+            const field=document.getElementById('game-name');
+            assert.equal(field.maxLength,100);
+            await input('game-name','One request');
+            const form=field.closest('form');
+            let release;
+            createGate=new Promise((resolve)=>{release=resolve;});
+            const before=calls.filter(([method,url])=>method==='POST' && url==='games/').length;
+            await submit(form);
+            assert.equal(form.querySelector('button[type="submit"]').disabled,true);
+            await submit(form);
+            assert.equal(calls.filter(([method,url])=>method==='POST' && url==='games/').length,before+1);
+            await act(async()=>release());
+            createGate=null;
+            assert.equal(form.querySelector('button[type="submit"]').disabled,false);
+            await input('game-name','Too soon');
+            createDetail='Další hru zatím nelze vytvořit. Počkejte 10 sekund.';
+            console.error=()=>{};
+            await submit(form);
+            console.error=originalError;
+            assert.match(document.querySelector('[role="alert"]').textContent,/Počkejte 10 sekund/);
+            assert.equal(field.value,'Too soon');
+            assert.equal(form.querySelector('button[type="submit"]').disabled,false);
+            createDetail='';
         });
         await t.test('initial priority and all empty states', async () => {
             for (const [games, publicGames, expected] of [[[waiting, solo], [publicGame], 'waiting'], [[solo], [publicGame], 'finished'], [[solo], [], 'finished'], [[], [], 'finished']]) {

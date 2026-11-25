@@ -63,7 +63,8 @@ def resolve_user(flow, identity):
                         raise OAuthFailure("verified_email_required")
                     if User.objects.filter(email__iexact=email).exists():
                         raise OAuthFailure("account_link_required")
-                    base = re.sub(r"[^\w.@+-]", "", str(identity.get("username", "")))[:130] or "player"
+                    # Leave room for the collision suffix within the new-name limit.
+                    base = re.sub(r"[^\w.@+-]", "", str(identity.get("username", "")))[:User.NEW_USERNAME_MAX_LENGTH - 9] or "player"
                     username = base
                     if attempt or User.objects.filter(username=username).exists():
                         username = base + "_" + secrets.token_hex(4)
