@@ -61,6 +61,11 @@ Do not expose the development server publicly.
 
 ### School Kubernetes Google client
 
+Email ownership checks also apply to social login and ticket exchange. See
+`EMAIL_VERIFICATION.md` for Google authoritative-address handling and migration
+of existing accounts. Local accounts must complete email verification before
+logging in to explicitly link a social identity.
+
 The deployed frontend origin is `https://diplomacy.kube.sspu-opava.cz`. Register
 this exact authorized redirect URI on the existing Google Web application client
 under Google Auth Platform / Clients:

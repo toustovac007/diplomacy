@@ -17,6 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import User, SocialIdentity, OAuthFlow, OAuthLoginTicket
 from . import oauth
+from .email_verification import mark_verified
 
 CONFIG = {p: {"client_id": p + "-client", "client_secret": "test-secret",
               "redirect_uri": f"http://127.0.0.1:8000/api/users/oauth/{p}/callback/"}
@@ -55,7 +56,7 @@ class OAuthTests(TestCase):
         elif url.endswith("/token"):
             claims = {"iss": "https://accounts.google.com", "aud": "google-client", "sub": "google-sub",
                       "iat": int(time.time()), "exp": int(time.time()) + 300, "nonce": self.nonce,
-                      "email": "player@example.com", "email_verified": True}
+                      "email": "player@example.com", "email_verified": True, "hd": "example.com"}
             claims.update(self.claim_changes)
             data = {"access_token": "provider-secret", "token_type": "Bearer",
                     "id_token": jwt.encode(claims, self.key, algorithm="RS256", headers={"kid": "test"})}
@@ -187,6 +188,7 @@ class OAuthTests(TestCase):
 
     def test_existing_email_never_auto_links_and_existing_subject_ignores_email(self):
         local = User.objects.create_user(username="local", email="PLAYER@example.com", password="test-password")
+        mark_verified(local)
         self.start()
         self.assertEqual(self.callback(), {"error": "account_link_required"})
         self.assertFalse(SocialIdentity.objects.exists())
@@ -200,6 +202,7 @@ class OAuthTests(TestCase):
     def test_explicit_link_different_email_idempotence_ownership_and_status(self):
         self.assertEqual(self.client.post("/api/users/oauth/github/link/start/").status_code, 401)
         local = User.objects.create_user(username="local", email="local@example.com")
+        mark_verified(local)
         self.client.force_authenticate(local)
         for _ in range(2):
             self.start("github", link=True)
@@ -269,6 +272,46 @@ class OAuthTests(TestCase):
             self.exchange("invalid")
         self.assertEqual(self.exchange("invalid").status_code, 429)
 
+    def test_third_party_google_email_needs_local_confirmation(self):
+        from django.core import mail
+        from .models import EmailVerification
+        self.claim_changes = {"hd": None}
+        self.start()
+        with override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"):
+            self.assertEqual(self.callback(), {"error": "email_not_verified"})
+            self.assertEqual(len(mail.outbox), 1)
+        user = User.objects.get()
+        self.assertFalse(user.is_email_verified)
+        self.assertTrue(EmailVerification.objects.filter(user=user).exists())
+        self.assertFalse(OAuthLoginTicket.objects.exists())
+        mark_verified(user)
+        self.start()
+        self.assertIn("ticket", self.callback())
+
+    def test_gmail_and_existing_linked_account_can_be_verified_from_fresh_identity(self):
+        local = User.objects.create_user(username="legacy", email="player@gmail.com")
+        SocialIdentity.objects.create(user=local, provider="google", subject="google-sub")
+        self.claim_changes = {"email":"player@gmail.com", "hd":None}
+        self.start()
+        self.assertIn("ticket", self.callback())
+        local.refresh_from_db()
+        self.assertTrue(local.is_email_verified)
+
+    def test_linked_identity_cannot_verify_a_different_stored_address(self):
+        local = User.objects.create_user(username="legacy", email="different@example.test")
+        SocialIdentity.objects.create(user=local, provider="google", subject="google-sub")
+        self.start()
+        with override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"):
+            self.assertEqual(self.callback(), {"error":"email_not_verified"})
+        local.refresh_from_db()
+        self.assertFalse(local.is_email_verified)
+
+    def test_ticket_exchange_rechecks_email_verification(self):
+        self.start()
+        ticket = self.callback()["ticket"]
+        User.objects.update(email="changed@example.test")
+        self.assertEqual(self.exchange(ticket).status_code, 400)
+
 
 class TicketConcurrencyTests(TransactionTestCase):
     def test_two_simultaneous_exchanges_issue_exactly_one_pair(self):
@@ -276,6 +319,7 @@ class TicketConcurrencyTests(TransactionTestCase):
         from threading import Barrier
         from django.db import connections, OperationalError
         user = User.objects.create_user(username="concurrent", email="concurrent@example.com")
+        mark_verified(user)
         OAuthLoginTicket.objects.create(user=user, token_digest=oauth.digest("ticket"),
             binding_digest=oauth.digest("browser"), cookie_name="oauth_test",
             expires_at=timezone.now() + timedelta(seconds=90))

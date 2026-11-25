@@ -1,11 +1,50 @@
 # Create your models here.
 
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
 
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    email_verified_for = models.EmailField(blank=True, default="")
+
+    @property
+    def is_email_verified(self):
+        # Changing the address (including through admin) invalidates its proof.
+        return bool(self.email and self.email_verified_at and
+                    self.email.strip().lower() == self.email_verified_for.strip().lower())
+
+    def save(self, *args, **kwargs):
+        fields = kwargs.get("update_fields")
+        if self.pk and (fields is None or "email" in fields):
+            with transaction.atomic():
+                previous = type(self).objects.select_for_update().filter(pk=self.pk).first()
+                if previous and previous.email.strip().lower() != self.email.strip().lower():
+                    self.email_verified_at, self.email_verified_for = None, ""
+                    if fields is not None:
+                        kwargs["update_fields"] = set(fields) | {"email_verified_at", "email_verified_for"}
+                    EmailVerification.objects.filter(user_id=self.pk).update(token_digest=None, consumed_at=timezone.now())
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
+
+
+class EmailVerification(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    email = models.EmailField(blank=True)
+    token_digest = models.CharField(max_length=64, null=True, unique=True)
+    expires_at = models.DateTimeField(null=True)
+    consumed_at = models.DateTimeField(null=True)
+    last_sent_at = models.DateTimeField(null=True)
+    window_start = models.DateTimeField(null=True)
+    send_count = models.PositiveIntegerField(default=0)
+
+
+class VerificationRequestLimit(models.Model):
+    key = models.CharField(max_length=64, primary_key=True)
+    window_start = models.DateTimeField()
+    count = models.PositiveIntegerField(default=0)
 
 
 PROVIDERS = [("google", "Google"), ("github", "GitHub")]

@@ -37,6 +37,7 @@ def authorization_url(provider, state, verifier, nonce):
 
 
 def verified_identity(flow, code):
+    email_is_authoritative = True
     client = client_for(flow.provider)
     token = client.fetch_access_token(code=code, code_verifier=flow.code_verifier,
                                      redirect_uri=settings.OAUTH_PROVIDERS[flow.provider]["redirect_uri"])
@@ -44,6 +45,9 @@ def verified_identity(flow, code):
         claims = client.parse_id_token(token, nonce=flow.nonce, leeway=30)
         subject = claims["sub"]
         email = claims.get("email") if claims.get("email_verified") is True else None
+        # A third-party address on a Google account may have changed owners.
+        email_is_authoritative = bool(email and
+            (email.lower().endswith("@gmail.com") or claims.get("hd")))
         username = (email or "player").split("@")[0]
     else:
         response = client.get("user", token=token)
@@ -67,4 +71,7 @@ def verified_identity(flow, code):
                 email = None
         except ValidationError:
             email = None
-    return {"subject": subject, "email": email, "username": username}
+    if email:
+        email = email.strip().lower()
+    return {"subject": subject, "email": email, "username": username,
+            "email_is_authoritative": email_is_authoritative}

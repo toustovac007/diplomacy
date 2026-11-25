@@ -25,6 +25,7 @@ export function startSession({ access, refresh }) {
 }
 
 const publicAuth = (url) => ["token/", "token/refresh/", "users/register/",
+    "users/email/verification/request/", "users/email/verification/confirm/",
     "users/oauth/providers/", "users/oauth/exchange/", "users/oauth/google/start/", "users/oauth/github/start/"].includes(url);
 api.interceptors.request.use((config) => {
     if (config._sessionVersion !== undefined && config._sessionVersion !== sessionVersion) {

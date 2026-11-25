@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from . import oauth, oauth_providers
 from .models import OAuthFlow
 from .throttles import OAuthStartThrottle, OAuthExchangeThrottle
+from .email_verification import request_verification
 
 logger = logging.getLogger(__name__)
 COOKIE_PATH = "/api/users/oauth/"
@@ -91,6 +92,9 @@ class CallbackView(PublicView):
                 raise oauth.OAuthFailure()
             identity = oauth_providers.verified_identity(flow, code)
             user = oauth.resolve_user(flow, identity)
+            if not user.is_email_verified:
+                request_verification(user.pk)
+                raise oauth.OAuthFailure("email_not_verified")
             result = {"linked": provider} if flow.intent == "link" else {"ticket": oauth.create_ticket(user, flow)}
         except Exception as error:
             category = error.code if isinstance(error, oauth.OAuthFailure) else "oauth_failed"

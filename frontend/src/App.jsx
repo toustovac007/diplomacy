@@ -6,6 +6,7 @@ import Register from "./pages/register";
 import Home from "./pages/home";
 import GameDetail from "./pages/gameDetail";
 import OAuthCallback from "./pages/OAuthCallback";
+import VerifyEmail from "./pages/VerifyEmail";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -70,6 +71,7 @@ function AuthenticatedApp() {
 
 export default function App() {
     return <Routes>
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="*" element={<AuthenticatedApp />} />
     </Routes>;

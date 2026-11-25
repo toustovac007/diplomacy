@@ -17,6 +17,7 @@ from apps.games.services.victory import finish_game
 from apps.games.services import draws
 from apps.chats.services import create_conversation, send_message
 from .models import EmailNotification, NotificationPreference
+from apps.users.email_verification import mark_verified
 from .services import (send_phase_started_notifications, process_deadline_reminders, send_chat_message_notifications,
                        send_draw_notifications, send_game_finished_notifications, deadline_reminder_minutes)
 
@@ -27,6 +28,8 @@ class NotificationTestCase(APITestCase):
     def setUpTestData(cls):
         call_command("seed_map", verbosity=0)
         cls.users = [get_user_model().objects.create_user(username=f"notify{i}", email=f"notify{i}@example.test") for i in range(4)]
+        for user in cls.users:
+            mark_verified(user)
         cls.game = Game.objects.create(name="Notification test", creator=cls.users[0], status="active")
         cls.players = [GamePlayer.objects.create(game=cls.game, user=user, country=country)
                        for user, country in zip(cls.users, ["ENG", "FRA", "GER", "ITA"])]
@@ -82,6 +85,15 @@ class NotificationTestCase(APITestCase):
         self.assertEqual(EmailNotification.objects.filter(event_type="phase_started", status="sent").count(), 4)
         with self.assertRaises(IntegrityError), transaction.atomic():
             EmailNotification.objects.create(recipient=self.users[0], event_type="phase_started", event_key=f"phase:{self.phase.pk}:started")
+
+    def test_unverified_or_changed_address_receives_no_game_email(self):
+        self.users[0].email_verified_at = None
+        self.users[0].save(update_fields=["email_verified_at"])
+        self.users[1].email = "changed@example.test"
+        self.users[1].save(update_fields=["email"])
+        send_phase_started_notifications(self.phase.pk)
+        self.assertEqual(self.recipients(), {self.users[2].email, self.users[3].email})
+        self.assertEqual(EmailNotification.objects.count(), 2)
 
     def test_blank_invalid_email_and_disabled_phase_preference(self):
         for user, email in zip(self.users, ["", "invalid", "bad\r\n@example.test"]):
@@ -368,7 +380,7 @@ class NotificationMigrationTests(TransactionTestCase):
         from django.conf import settings
         from django.db import connection
         from django.db.migrations.executor import MigrationExecutor
-        before = [("notifications", "0001_initial"), ("games", "0011_draw_voting")]
+        before = [("notifications", "0001_initial"), ("games", "0011_draw_voting"), ("users", "0003_email_verification")]
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
         executor.migrate(before)

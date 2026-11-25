@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import VerificationRequest from "../components/VerificationRequest";
 import leftArtwork from "../assets/auth/login-left.png";
 import rightArtwork from "../assets/auth/login-right.png";
 import diplomacyMark from "../assets/auth/diplomacie-mark.png";
@@ -13,9 +14,12 @@ function Register({ onBackToLogin }) {
     const [password, setPassword] = useState("");
     const [passwordAgain, setPasswordAgain] = useState("");
     const [error, setError] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
 
     const handleRegister = async (event) => {
         event.preventDefault();
+        if (busy) return;
         setError("");
 
         if (password !== passwordAgain) {
@@ -29,7 +33,11 @@ function Register({ onBackToLogin }) {
         }
 
         try {
+            setBusy(true);
             await register(username, email, password);
+            setSubmitted(true);
+            setPassword("");
+            setPasswordAgain("");
         } catch (error) {
             console.error("Authentication request failed", error.response?.status);
 
@@ -42,7 +50,7 @@ function Register({ onBackToLogin }) {
             } else {
                 setError("Registrace se nepodařila.");
             }
-        }
+        } finally { setBusy(false); }
     };
 
     return (
@@ -56,9 +64,9 @@ function Register({ onBackToLogin }) {
                     <img className="login-mark" src={diplomacyMark} alt="" />
                     <h1 id="register-title">Diplomacie</h1>
                 </header>
-                <h2>Vytvoření účtu</h2>
+                <h2>{submitted ? "Ověřte svůj e-mail" : "Vytvoření účtu"}</h2>
 
-                <form className="login-form" onSubmit={handleRegister}>
+                {submitted ? <VerificationRequest initialEmail={email} /> : <form className="login-form" onSubmit={handleRegister}>
                     <div className="login-field">
                         <label htmlFor="register-username">Uživatelské jméno</label>
                         <input
@@ -111,10 +119,10 @@ function Register({ onBackToLogin }) {
                         />
                     </div>
 
-                    <button className="login-submit" type="submit">
-                        Vytvořit účet
+                    <button className="login-submit" type="submit" disabled={busy}>
+                        {busy ? "Odesílám..." : "Vytvořit účet"}
                     </button>
-                </form>
+                </form>}
 
                 {error && <p className="login-error" role="alert">{error}</p>}
 

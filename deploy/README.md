@@ -158,6 +158,12 @@ included the repository with Admin permission.
 
 ## SMTP configuration
 
+Email ownership verification is described in `backend/EMAIL_VERIFICATION.md`.
+Deploy its backend migration and both images together using the normal script.
+Existing password accounts must verify their stored address before the game API
+accepts login or existing JWTs. Fresh trusted Google sign-in can verify a matching
+Gmail/Workspace address. Existing games and accounts are preserved.
+
 The optional `diplomacy-email` Secret in namespace `diplomacy` supplies the mail
 configuration to both the backend container and the deadline CronJob. Its values
 override the disabled backend in `diplomacy-config`. Without this Secret, email

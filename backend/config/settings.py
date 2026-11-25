@@ -181,9 +181,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "NUM_PROXIES": 0,  # Ignore untrusted X-Forwarded-For for auth throttling.
     "DEFAULT_THROTTLE_RATES": {"login": "10/min", "register": "5/hour", "refresh": "30/min",
+                               "verification_request": "20/hour",
                                "oauth_start": "20/hour", "oauth_exchange": "30/min"},
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.users.authentication.VerifiedJWTAuthentication",
     ),
 }
 
@@ -212,6 +213,12 @@ EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "diplomacie@localhost")
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "").strip()
+EMAIL_VERIFICATION_FRONTEND_URL = (FRONTEND_BASE_URL or "http://127.0.0.1:5173").rstrip("/")
+verification_origin = urlsplit(EMAIL_VERIFICATION_FRONTEND_URL)
+if (verification_origin.scheme not in ({"http", "https"} if DEBUG else {"https"}) or
+        not verification_origin.netloc or verification_origin.username or verification_origin.path or
+        verification_origin.query or verification_origin.fragment):
+    raise ImproperlyConfigured("Email verification requires an explicit frontend origin")
 
 if not DEBUG:
     frontend_url = urlsplit(FRONTEND_BASE_URL)

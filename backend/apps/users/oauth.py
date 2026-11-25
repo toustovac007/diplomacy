@@ -7,6 +7,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import OAuthFlow, OAuthLoginTicket, SocialIdentity, User
+from .email_verification import mark_verified
 
 
 class OAuthFailure(Exception):
@@ -72,6 +73,10 @@ def resolve_user(flow, identity):
                     linked = SocialIdentity.objects.create(user=user, provider=flow.provider, subject=subject)
                 if not user.is_active:
                     raise OAuthFailure()
+                if (not user.is_email_verified and identity.get("email") and
+                        identity.get("email_is_authoritative", False) and
+                        identity["email"].strip().lower() == user.email.strip().lower()):
+                    mark_verified(user)
                 linked.last_login_at = timezone.now()
                 linked.save(update_fields=["last_login_at"])
                 return user
@@ -82,6 +87,8 @@ def resolve_user(flow, identity):
 
 
 def create_ticket(user, flow):
+    if not user.is_active or not user.is_email_verified:
+        raise OAuthFailure("email_not_verified")
     ticket = secrets.token_urlsafe(32)
     OAuthLoginTicket.objects.create(user=user, token_digest=digest(ticket),
         binding_digest=flow.binding_digest, cookie_name=cookie_name(flow),
@@ -102,7 +109,7 @@ def exchange_ticket(raw, cookies):
         if not OAuthLoginTicket.objects.filter(pk=candidate.pk, used_at=None, expires_at__gt=now).update(used_at=now):
             raise OAuthFailure()
         ticket = OAuthLoginTicket.objects.select_for_update().select_related("user").filter(token_digest=digest(raw)).first()
-        if not ticket or not ticket.user.is_active:
+        if not ticket or not ticket.user.is_active or not ticket.user.is_email_verified:
             raise OAuthFailure()
         refresh = RefreshToken.for_user(ticket.user)
         return {"access": str(refresh.access_token), "refresh": str(refresh)}, ticket.cookie_name

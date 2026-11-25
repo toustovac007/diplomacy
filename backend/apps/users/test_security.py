@@ -10,6 +10,7 @@ from django.test import SimpleTestCase
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 from config.environment import env_bool
+from .email_verification import mark_verified
 
 
 class EnvironmentTests(SimpleTestCase):
@@ -64,6 +65,7 @@ class AuthenticationSecurityTests(APITestCase):
         self.addCleanup(cache.clear)
         self.password = "Bamboo!river83-moon"
         self.user = get_user_model().objects.create_user(username="alice", email="alice@example.test", password=self.password)
+        mark_verified(self.user)
 
     def test_registration_validates_password_and_never_exposes_it(self):
         data = {"username": "bravo", "email": "bravo@example.test", "password": "12345678"}

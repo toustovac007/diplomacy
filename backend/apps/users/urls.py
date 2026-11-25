@@ -2,9 +2,12 @@ from django.urls import path
 
 from .views import RegisterView, MeView, LogoutView
 from .oauth_views import ProvidersView, IdentitiesView, StartView, LinkStartView, CallbackView, ExchangeView
+from .verification_views import ResendVerificationView, ConfirmVerificationView
 
 
 urlpatterns = [
+    path("email/verification/request/", ResendVerificationView.as_view()),
+    path("email/verification/confirm/", ConfirmVerificationView.as_view()),
     path("oauth/providers/", ProvidersView.as_view()),
     path("oauth/identities/", IdentitiesView.as_view()),
     path("oauth/exchange/", ExchangeView.as_view()),

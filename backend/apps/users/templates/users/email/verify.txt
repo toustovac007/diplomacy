@@ -1,0 +1,7 @@
+Ověřte svůj e-mail pro Diplomacii
+
+Pro dokončení registrace nebo ověření adresy stávajícího účtu otevřete odkaz:
+{{ verification_url }}
+
+Na stránce potvrďte ověření tlačítkem. Odkaz platí 24 hodin a lze ho použít jen jednou.
+Pokud jste o ověření nežádali, zprávu ignorujte. Nikomu neposílejte tento odkaz ani své heslo.

@@ -465,7 +465,7 @@ class GameSettingsMigrationTests(TransactionTestCase):
         from django.conf import settings
         from django.db import connection
         from django.db.migrations.executor import MigrationExecutor
-        before = [("games", "0009_resolved_orders_snapshot")]
+        before = [("games", "0009_resolved_orders_snapshot"), ("users", "0003_email_verification")]
         after = [("games", "0010_game_creation_settings")]
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
@@ -728,7 +728,7 @@ class DrawMigrationTests(TransactionTestCase):
         from django.conf import settings
         from django.db import connection
         from django.db.migrations.executor import MigrationExecutor
-        before = [("games", "0010_game_creation_settings")]
+        before = [("games", "0010_game_creation_settings"), ("users", "0003_email_verification")]
         after = [("games", "0011_draw_voting")]
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()

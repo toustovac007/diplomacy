@@ -42,6 +42,8 @@ def get_phase_name(phase):
 
 @safe_notification
 def send_notification_once(user, event_type, event_key, game, subject, lines, *, phase_id=None):
+    if not user.is_active or not user.is_email_verified:
+        return False
     address = (user.email or "").strip()
     try:
         validate_email(address)

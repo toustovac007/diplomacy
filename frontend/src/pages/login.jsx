@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import SocialLogin from "../components/SocialLogin";
+import VerificationRequest from "../components/VerificationRequest";
 import leftArtwork from "../assets/auth/login-left.png";
 import rightArtwork from "../assets/auth/login-right.png";
 import diplomacyMark from "../assets/auth/diplomacie-mark.png";
@@ -12,6 +13,7 @@ function Login({ onRegisterClick }) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
+    const [verification, setVerification] = useState(false);
 
     const handleLogin = async (event) => {
         event.preventDefault();
@@ -22,7 +24,10 @@ function Login({ onRegisterClick }) {
         } catch (error) {
             console.error("Authentication request failed", error.response?.status);
 
-            if (error.response?.status === 401) {
+            if (error.response?.data?.detail === "email_not_verified") {
+                setError("Nejdřív ověřte svou e-mailovou adresu.");
+                setVerification(true);
+            } else if (error.response?.status === 401) {
                 setError("Nesprávné uživatelské jméno nebo heslo.");
             } else {
                 setError("Nastala chyba při přihlašování.");
@@ -75,6 +80,8 @@ function Login({ onRegisterClick }) {
                 </form>
 
                 {error && <p className="login-error" role="alert">{error}</p>}
+                {verification && <VerificationRequest />}
+                {!verification && <p className="login-register"><button type="button" onClick={() => setVerification(true)}>Ověřit e-mail / poslat nový odkaz</button></p>}
                 <SocialLogin />
 
                 <p className="login-register">

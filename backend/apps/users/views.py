@@ -11,21 +11,34 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import RegisterSerializer
+from .authentication import VerifiedTokenObtainPairSerializer, VerifiedTokenRefreshSerializer
+from .throttles import VerificationRequestThrottle
+from .email_verification import REQUEST_MESSAGE, request_verification
 
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [RegisterThrottle]
+    throttle_classes = [RegisterThrottle, VerificationRequestThrottle]
+
+    def create(self, request, *args, **kwargs):
+        data = self.get_serializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        user = data.save()
+        request_verification(user.pk)
+        return Response({"detail": REQUEST_MESSAGE}, status=201,
+                        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 class LoginView(TokenObtainPairView):
     throttle_classes = [LoginThrottle]
+    serializer_class = VerifiedTokenObtainPairSerializer
 
 
 class RefreshView(TokenRefreshView):
     throttle_classes = [RefreshThrottle]
+    serializer_class = VerifiedTokenRefreshSerializer
 
 
 class LogoutInput(serializers.Serializer):

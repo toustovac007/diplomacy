@@ -75,14 +75,13 @@ export function AuthProvider({ children }) {
     };
 
     const register = async (username, email, password) => {
-        await api.post("users/register/", {
+        const response = await api.post("users/register/", {
             username,
             email,
             password,
-        });
+        }, { timeout: 15000 });
 
-        // Po registraci uživatele rovnou přihlásíme
-        return await login(username, password);
+        return response.data;
     };
 
     const logout = async () => {

@@ -2,6 +2,7 @@ import api from "./api";
 
 export const providerNames = { google: "Google", github: "GitHub" };
 export const oauthErrors = {
+    email_not_verified: "Nejdřív ověřte e-mail svého účtu. O potvrzovací zprávu můžete požádat na přihlašovací stránce.",
     access_denied: "Přihlášení bylo zrušeno.",
     account_link_required: "Účet s tímto e-mailem už existuje. Přihlas se heslem a potom Google/GitHub propoj se svým účtem.",
     verified_email_required: "Poskytovatel neposkytl ověřený e-mail.",
