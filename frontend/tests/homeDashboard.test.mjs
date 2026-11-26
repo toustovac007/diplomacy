@@ -13,7 +13,13 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
     const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
     Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
     const { createRoot } = await import('react-dom/client');
-    const { MemoryRouter } = await import('react-router-dom');
+    const { MemoryRouter, Routes, Route, useNavigate } = await import('react-router-dom');
+    function HistoryNavigation() {
+        const navigate = useNavigate();
+        return React.createElement(React.Fragment, null,
+            React.createElement('button', {'data-history':'back', onClick:()=>navigate(-1)}, 'Test back'),
+            React.createElement('button', {'data-history':'forward', onClick:()=>navigate(1)}, 'Test forward'));
+    }
     const player = { id: 1, username: 'france', country: 'FRA', country_name: 'Francie' };
     const make = (id, status, extra = {}) => ({ id, name: `Game ${id}`, status, creator: 'france', players: [player],
         max_players: 7, is_public: true, movement_duration_minutes: 1440, retreat_duration_minutes: 720,
@@ -72,10 +78,14 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
         const { default: Home, GameStatusBadge, formatDuration, Ranking, refillWait } = await import(pathToFileURL(file).href);
         root = createRoot(document.getElementById('root'));
         let key = 0;
-        const render = () => act(async () => root.render(React.createElement(MemoryRouter, null, React.createElement(Home, { key: ++key }))));
-        const tab = (id) => document.getElementById(`home-tab-${id}`);
+        const render = (entry = '/') => act(async () => root.render(React.createElement(MemoryRouter, { key: ++key, initialEntries: [entry] },
+            React.createElement(Routes, null,
+                React.createElement(Route, {path:'/', element:React.createElement(Home)}),
+                React.createElement(Route, {path:'/ranking', element:React.createElement(Ranking)})),
+            React.createElement(HistoryNavigation))));
+        const tab = (id) => document.getElementById(`home-nav-${id}`);
         const panel = (id) => document.getElementById(`home-panel-${id}`);
-        const click = (node) => act(async () => node.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
+        const click = (node) => act(async () => node.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
         const submit = (form) => act(async () => form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
         const input = async (id, value) => act(async () => {
             const node = document.getElementById(id);
@@ -88,24 +98,30 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
         });
         const gameGets = () => calls.filter(([method, url]) => method === 'GET' && url.startsWith('games/')).length;
         await render();
-        await t.test('owned tabs and separate public section, cards, keyboard navigation and no tab fetches', async () => {
-            assert.equal(document.querySelectorAll('[role=tab]').length, 3);
+        await t.test('five navbar views, separate public view, keyboard navigation and no filter fetches', async () => {
+            assert.equal(document.querySelectorAll('[role=tab]').length, 0);
+            assert.deepEqual([...document.querySelectorAll('.dashboard-navigation a')].map(node => node.textContent), ['Aktivní', 'Čekající', 'Dokončené', 'Veřejné hry', 'Žebříček']);
+            assert.equal(document.querySelectorAll('.dashboard-navigation [aria-current=page]').length, 1);
             const navbar = document.querySelector('.dashboard-navbar');
             assert.match(navbar.textContent, /Diplomacie/);
             assert.match(navbar.textContent, /france/);
             assert.equal(navbar.querySelector('button').textContent, 'Odhlásit se');
             assert.ok(navbar.querySelector('img'));
-            assert.equal(document.querySelector('h1').textContent, 'Moje hry');
+            assert.equal(navbar.querySelector('.dashboard-brand img').getAttribute('src'), '/diplomacie-mark.svg');
+            assert.equal(document.querySelector('h1').textContent, 'Aktivní hry');
             const grid = document.querySelector('.dashboard-main-grid');
             assert.deepEqual([...grid.children].map((node) => node.className), ['dashboard-owned', 'dashboard-quick-actions']);
-            assert.equal(grid.nextElementSibling.className, 'dashboard-public');
+            assert.equal(grid.nextElementSibling, null);
+            assert.equal(document.querySelector('.dashboard-public'), null);
+            assert.ok(grid.children[0].contains(panel('public')));
+            assert.equal(panel('public').hidden, true);
             assert.equal(document.querySelectorAll('#game-name').length, 1);
             assert.equal(document.querySelectorAll('#invite-code').length, 1);
             assert.ok(grid.children[1].querySelector('.notification-settings'));
-            assert.equal(panel('join').querySelector('code'), null);
-            assert.equal(tab('active').getAttribute('aria-selected'), 'true');
+            assert.equal(panel('public').querySelector('code'), null);
+            assert.equal(tab('active').getAttribute('aria-current'), 'page');
             for (const [id, count, names] of [['active', 1, ['Game 1']], ['waiting', 1, ['Game 2']], ['finished', 2, ['Game 4', 'Game 3']]]) {
-                assert.match(tab(id).textContent, new RegExp(`\\(${count}\\)`));
+                assert.equal(panel(id).querySelectorAll('.home-game-card').length, count);
                 assert.deepEqual([...panel(id).querySelectorAll('h3')].map((node) => node.textContent), names);
             }
             assert.match(panel('active').textContent, /Francie/);
@@ -113,9 +129,9 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             assert.match(panel('active').textContent, /Deadline/);
             assert.equal(panel('active').querySelector('a').getAttribute('href'), '/games/1');
             assert.match(panel('waiting').textContent, /24 hodin/);
-            assert.match(panel('join').textContent, /Game 5/);
-            assert.equal(panel('join').closest('section').getAttribute('aria-labelledby'), 'public-games-title');
-            assert.equal(panel('join').querySelector('a'), null);
+            assert.match(panel('public').textContent, /Game 5/);
+            assert.equal(panel('public').getAttribute('aria-labelledby'), 'home-nav-public');
+            assert.equal(panel('public').querySelector('a'), null);
             assert.equal(gameGets(), 2);
             assert.equal(panel('waiting').querySelector('code').textContent, 'private-code');
             assert.match(panel('finished').textContent, /Vítěz: Francie — france/);
@@ -124,16 +140,46 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             await click(tab('finished')); await click(tab('waiting')); await click(tab('active'));
             await act(async () => tab('active').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })));
             assert.equal(document.activeElement, tab('waiting'));
-            assert.equal(tab('waiting').getAttribute('aria-selected'), 'true');
+            assert.equal(tab('waiting').getAttribute('aria-current'), 'page');
             assert.equal(gameGets(), before);
         });
-        await t.test('public join reloads both lists and preserves owned tab', async () => {
+        await t.test('all five views and browser history preserve quick-action drafts without game refetches', async () => {
             const before = gameGets();
-            await click(panel('join').querySelector('button'));
+            const form = document.getElementById('game-name').closest('form');
+            form.closest('details').open = true;
+            await input('game-name', 'Rozpracovaná hra');
+            await input('invite-code', 'draft-invitation');
+            await select('max-players', '3');
+            await click(tab('public'));
+            await click(tab('ranking'));
+            assert.equal(document.querySelector('h1').textContent, 'Žebříček hráčů');
+            assert.ok(document.querySelector('.token-ranking'));
+            assert.equal(document.getElementById('game-name').closest('form'), form);
+            assert.equal(form.closest('details').open, true);
+            await click(document.querySelector('[data-history=back]'));
+            assert.equal(tab('public').getAttribute('aria-current'), 'page');
+            await click(document.querySelector('[data-history=forward]'));
+            assert.equal(tab('ranking').getAttribute('aria-current'), 'page');
+            for (const view of ['active', 'finished', 'waiting']) await click(tab(view));
+            assert.equal(document.getElementById('game-name').value, 'Rozpracovaná hra');
+            assert.equal(document.getElementById('invite-code').value, 'draft-invitation');
+            assert.equal(document.getElementById('max-players').value, '3');
+            assert.equal(document.getElementById('game-name').closest('form'), form);
+            assert.equal(gameGets(), before);
+            assert.equal(document.querySelectorAll('#game-name').length, 1);
+            await input('game-name', ''); await input('invite-code', ''); await select('max-players', '7');
+            form.closest('details').open = false;
+        });
+        await t.test('public join reloads both lists and preserves public view', async () => {
+            await click(tab('public'));
+            assert.equal(panel('public').hidden, false);
+            assert.equal(panel('waiting').hidden, true);
+            const before = gameGets();
+            await click(panel('public').querySelector('button'));
             assert.ok(calls.some(([method, url]) => method === 'POST' && url === 'games/5/join/'));
             assert.equal(gameGets() - before, 2);
-            assert.equal(tab('waiting').getAttribute('aria-selected'), 'true');
-            assert.match(panel('join').textContent, /Momentálně nejsou žádné veřejné hry/);
+            assert.equal(tab('public').getAttribute('aria-current'), 'page');
+            assert.match(panel('public').textContent, /Momentálně nejsou žádné veřejné hry/);
             assert.match(panel('waiting').textContent, /Game 5/);
         });
         await t.test('private invite, complete creation form, errors and notification preferences preserved', async () => {
@@ -205,13 +251,27 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             for (const [games, publicGames, expected] of [[[waiting, solo], [publicGame], 'waiting'], [[solo], [publicGame], 'finished'], [[solo], [], 'finished'], [[], [], 'finished']]) {
                 own = games; joinable = publicGames;
                 await render();
-                assert.equal(tab(expected).getAttribute('aria-selected'), 'true');
+                assert.equal(tab(expected).getAttribute('aria-current'), 'page');
             }
-            assert.ok(panel('join').querySelector('.home-empty-state'));
+            assert.ok(panel('public').querySelector('.home-empty-state'));
             for (const id of ['active', 'waiting', 'finished']) {
                 await click(tab(id));
                 assert.ok(panel(id).querySelector('.home-empty-state'));
                 assert.equal(panel(id).hidden, false);
+            }
+        });
+        await t.test('direct URLs select the requested view and invalid values safely fall back', async () => {
+            own = [active, waiting]; joinable = [publicGame];
+            for (const [url, view] of [['/?view=active','active'], ['/?view=waiting','waiting'],
+                ['/?view=finished','finished'], ['/?view=public','public'], ['/ranking','ranking'], ['/ranking/','ranking'],
+                ['/?view=__proto__','active'], ['/?view=unknown','active']]) {
+                await render(url);
+                assert.equal(tab(view).getAttribute('aria-current'), 'page');
+                assert.equal(panel(view).hidden, false);
+                assert.equal(document.querySelectorAll('.dashboard-navigation [aria-current=page]').length, 1);
+                for (const other of ['active','waiting','finished','public','ranking'].filter(id=>id!==view)) {
+                    assert.equal(panel(other).hidden, true);
+                }
             }
         });
         await t.test('wallet, affordable stake choices, scoring payload and refreshed balances', async () => {
@@ -222,7 +282,7 @@ test('Home dashboard categorization, forms, refreshes, results and initial prior
             assert.ok(document.querySelector('.token-amount--frozen img'));
             assert.deepEqual([...document.getElementById('token-stake').options].map(option => Number(option.value)), [100, 200, 300, 500, 800, 1000, 1500]);
             assert.equal(document.querySelector('#token-stake option[value="500"]').disabled, true);
-            assert.equal(panel('join').querySelector('button').disabled, true);
+            assert.equal(panel('public').querySelector('button').disabled, true);
             const before = calls.filter(([method, url]) => method === 'POST' && url === 'games/').length;
             await input('game-name', 'Too expensive');
             await select('token-stake', '500');

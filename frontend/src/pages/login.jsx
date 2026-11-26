@@ -4,7 +4,6 @@ import SocialLogin from "../components/SocialLogin";
 import VerificationRequest from "../components/VerificationRequest";
 import leftArtwork from "../assets/auth/login-left.png";
 import rightArtwork from "../assets/auth/login-right.png";
-import diplomacyMark from "../assets/auth/diplomacie-mark.png";
 import "./login.css";
 
 function Login({ onRegisterClick }) {
@@ -43,7 +42,7 @@ function Login({ onRegisterClick }) {
             </div>
             <section className="login-card" aria-labelledby="login-title">
                 <header className="login-card__header">
-                    <img className="login-mark" src={diplomacyMark} alt="" />
+                    <img className="login-mark" src="/diplomacie-mark.svg" width="128" height="128" alt="" />
                     <h1 id="login-title">Diplomacie</h1>
                     <p>Strategické aliance, vyjednávání a boj o nadvládu v Evropě.</p>
                 </header>

@@ -6,6 +6,7 @@ import DashboardShell from "../components/DashboardShell";
 import HomeGameCard from "../components/game/HomeGameCard";
 import NotificationSettings from "../components/NotificationSettings";
 import AccountLogin from "../components/AccountLogin";
+import Leaderboard from "../components/Leaderboard";
 import useTokenWallet from "../hooks/useTokenWallet";
 import { TokenRefillNotice } from "../components/tokens/WalletBalance";
 import { TOKEN_STAKES } from "../components/tokens/tokenRules";
@@ -47,7 +48,7 @@ function Home() {
 
     const [games, setGames] = useState([]);
     const [publicGames, setPublicGames] = useState([]);
-    const [selectedTab, setSelectedTab] = useState(null);
+    const [initialTab, setInitialTab] = useState(null);
     const [loaded, setLoaded] = useState(false);
     const createPanel = useRef(null);
     const invitePanel = useRef(null);
@@ -59,7 +60,14 @@ function Home() {
         { id: "active", label: "Aktivní", games: activeGames, empty: "Momentálně nemáš žádnou rozehranou hru." },
         { id: "waiting", label: "Čekající", games: waitingGames, empty: "Nemáš žádnou hru čekající na spuštění." },
         { id: "finished", label: "Dokončené", games: finishedGames, empty: "Zatím nemáš žádnou dokončenou hru." },
+        { id: "public", label: "Veřejné hry", games: publicGames, empty: "Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit." },
+        { id: "ranking", label: "Žebříček", games: [] },
     ];
+    const requestedView = new URLSearchParams(location.search).get("view");
+    const selectedTab = location.pathname.replace(/\/+$/, "") === "/ranking" ? "ranking"
+        : tabs.some((tab) => tab.id !== "ranking" && tab.id === requestedView) ? requestedView : initialTab ?? "active";
+    const selectedTitle = selectedTab === "ranking" ? "Žebříček hráčů"
+        : selectedTab === "public" ? "Veřejné hry" : `${tabs.find((tab) => tab.id === selectedTab).label} hry`;
 
     const [name, setName] = useState("");
     const [settings, setSettings] = useState(defaultSettings);
@@ -97,7 +105,7 @@ function Home() {
 
     const loadAllGames = async () => {
         const [own = []] = await Promise.all([loadGames(), loadPublicGames()]);
-        setSelectedTab((current) => current ?? (own.some((game) => game.status === "active") ? "active"
+        setInitialTab((current) => current ?? (own.some((game) => game.status === "active") ? "active"
             : own.some((game) => game.status === "waiting") ? "waiting" : "finished"));
         setLoaded(true);
     };
@@ -193,10 +201,12 @@ function Home() {
     };
 
     return (
-        <DashboardShell username={user?.username} onLogout={logout} headquarters wallet={wallet} walletError={walletError}>
+        <DashboardShell username={user?.username} onLogout={logout} headquarters activeView={selectedTab} wallet={wallet} walletError={walletError}>
         <main className="home-page">
             <header className="home-header">
-                <div><p className="dashboard-eyebrow">VELITELSTVÍ</p><h1>Moje hry</h1><p>Tvá tažení, aliance a další kroky na mapě Evropy.</p></div>
+                <div><p className="dashboard-eyebrow">VELITELSTVÍ</p><h1>{selectedTitle}</h1>
+                    <p>{selectedTab === "ranking" ? "Top 10 podle součtu dostupných a zmražených tokenů. Při shodě rozhoduje dříve založený účet."
+                        : selectedTab === "public" ? "Najdi nové spoluhráče a přidej se k jednání." : "Tvá tažení, aliance a další kroky na mapě Evropy."}</p></div>
             </header>
             <div className="home-feedback">
                 {walletError && <p role="alert">{walletError} <button type="button" onClick={refreshWallet}>Zkusit znovu</button></p>}
@@ -206,26 +216,13 @@ function Home() {
             </div>
             <TokenRefillNotice wallet={wallet} />
             <div className="dashboard-main-grid">
-                <section className="dashboard-owned" aria-label="Moje hry">
+                <section className="dashboard-owned" aria-label="Přehled her">
             {!loaded ? <p role="status">Načítám hry…</p> : <>
-                <div className="game-tabs home-tabs" role="tablist" aria-label="Přehled her">
-                    {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" className="game-tab"
-                        id={`home-tab-${tab.id}`} aria-selected={selectedTab === tab.id} aria-controls={`home-panel-${tab.id}`}
-                        tabIndex={selectedTab === tab.id ? 0 : -1} onClick={() => setSelectedTab(tab.id)}
-                        onKeyDown={(event) => {
-                            const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
-                                : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
-                                : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
-                            if (next === null) return;
-                            event.preventDefault();
-                            setSelectedTab(tabs[next].id);
-                            document.getElementById(`home-tab-${tabs[next].id}`).focus();
-                        }}>{tab.label} ({tab.games.length})</button>)}
-                </div>
-                {tabs.map((tab) => <section key={tab.id} className="game-tab-panel home-tab-panel" role="tabpanel"
-                    id={`home-panel-${tab.id}`} aria-labelledby={`home-tab-${tab.id}`} hidden={selectedTab !== tab.id} tabIndex={0}>
-                    {tab.games.length ? <div className="game-card-grid">
-                        {tab.games.map((game) => <HomeGameCard key={game.id} game={game} variant={tab.id}
+                {tabs.map((tab) => <section key={tab.id} className="dashboard-view-panel" role="region"
+                    id={`home-panel-${tab.id}`} aria-labelledby={`home-nav-${tab.id}`} hidden={selectedTab !== tab.id} tabIndex={0}>
+                    {tab.id === "ranking" ? selectedTab === "ranking" && <Leaderboard username={user?.username} />
+                        : tab.games.length ? <div className="game-card-grid">
+                        {tab.games.map((game) => <HomeGameCard key={game.id} game={game} variant={tab.id === "public" ? "join" : tab.id}
                             currentUsername={user?.username} availableTokens={availableTokens} onJoin={handleJoinGame} />)}
                     </div> : <p className="home-empty-state">{tab.empty}</p>}
                 </section>)}
@@ -318,17 +315,6 @@ function Home() {
             </div>
                 </aside>
             </div>
-            {loaded && <>
-                <section className="dashboard-public" aria-labelledby="public-games-title">
-                    <header><h2 id="public-games-title">Veřejné hry</h2><p>Najdi nové spoluhráče a přidej se k jednání.</p></header>
-                    <div id="home-panel-join">
-                        {publicGames.length ? <div className="game-card-grid">
-                            {publicGames.map((game) => <HomeGameCard key={game.id} game={game} variant="join"
-                                currentUsername={user?.username} availableTokens={availableTokens} onJoin={handleJoinGame} />)}
-                        </div> : <p className="home-empty-state">Momentálně nejsou žádné veřejné hry, ke kterým se můžeš připojit.</p>}
-                    </div>
-                </section>
-            </>}
         </main>
         </DashboardShell>
     );

@@ -3,7 +3,6 @@ import { useAuth } from "../context/AuthContext";
 import VerificationRequest from "../components/VerificationRequest";
 import leftArtwork from "../assets/auth/login-left.png";
 import rightArtwork from "../assets/auth/login-right.png";
-import diplomacyMark from "../assets/auth/diplomacie-mark.png";
 import "./login.css";
 
 function Register({ onBackToLogin }) {
@@ -61,7 +60,7 @@ function Register({ onBackToLogin }) {
             </div>
             <section className="login-card" aria-labelledby="register-title">
                 <header className="login-card__header">
-                    <img className="login-mark" src={diplomacyMark} alt="" />
+                    <img className="login-mark" src="/diplomacie-mark.svg" width="128" height="128" alt="" />
                     <h1 id="register-title">Diplomacie</h1>
                 </header>
                 <h2>{submitted ? "Ověřte svůj e-mail" : "Vytvoření účtu"}</h2>
